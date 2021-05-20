@@ -22,4 +22,4 @@ from .reaction import *
 from .substance import *
 from pony.orm import Database
 
-__all__ = ['db']
+__all__ = ['db', 'Reaction']
