@@ -8,4 +8,12 @@ class MoleculeIndex(db.Entity):
     PrimaryKey(band, key)
 
 
+#class ReactionIndex(db.Entity):
+#    id = PrimaryKey(int, auto=True)
+#    reaction = Required('Reaction')
+#    signature = Required(bytes, unique=True,  column='signature')
+#    fingerprint = Required(IntArray, optimistic=False, index=False, volatile=True, column='fingerprint')
+#    structures = Required(IntArray, optimistic=False, index=False,  volatile=True, column='structures')
+
+
 __all__ = ['MoleculeIndex']

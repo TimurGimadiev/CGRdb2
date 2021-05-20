@@ -1,9 +1,11 @@
-from pickle import dumps, loads
-from CGRtools.containers import MoleculeContainer
-from pony.orm import PrimaryKey, Required, Set, IntArray
 from functools import cached_property
+from pickle import dumps, loads
 from typing import Union, Optional, List
+
+from CGRtools.containers import MoleculeContainer
 from StructureFingerprint import LinearFingerprint
+from pony.orm import PrimaryKey, Required, Set, IntArray
+
 from . import config
 from .config import Entity
 
@@ -33,7 +35,7 @@ class MoleculeStructure(Entity):
     _structure = Required(bytes)
     _fast_mapping = Required(IntArray)
 
-    def __init__(self, mol: Union[bytes, MoleculeContainer], molecule: 'Molecule', /, is_canonic: bool = True, *,
+    def __init__(self, mol: Union[bytes, MoleculeContainer], molecule: Molecule, /, is_canonic: bool = True, *,
                  fingerprint: Optional[List[int]] = None, signature: Optional[bytes] = None,
                  smiles: Optional[str] = None, fast_mapping: Optional[List[int]] = None):
         if isinstance(mol, bytes):  # low-level. errors not controlled
@@ -54,13 +56,13 @@ class MoleculeStructure(Entity):
                     {(n, a.atomic_number, a.isotope) for n, a in mol.atoms()}:
                 raise ValueError('atoms order in CGRtools.MoleculeContainer of new structure '
                                  'not corresponds to canonic structure')
-            if fingerprint is None:
-                fingerprint = LinearFingerprint(**config.fingerprint).transform_hashes([mol])[0]
-            if signature is None:
-                signature = bytes(mol)
             if smiles is None or fast_mapping is None:
                 fast_mapping = mol.smiles_atoms_order
                 smiles = str(mol)
+            if signature is None:
+                signature = bytes(mol)
+            if fingerprint is None:
+                fingerprint = LinearFingerprint(**config.fingerprint).transform_hashes([mol])[0]
             mol = dumps(mol)
         super().__init__(_structure=mol, fingerprint=fingerprint, molecule=molecule, signature=signature,
                          is_canonic=is_canonic, smiles=smiles, _fast_mapping=fast_mapping)
@@ -86,11 +88,11 @@ class NonOrganic(Entity):
         elif not isinstance(mol, MoleculeContainer):
             raise TypeError('CGRtools.MoleculeContainer container or pickle dumped CGRtools.MoleculeContainer expected')
         else:
-            if signature is None:
-                signature = bytes(mol)
             if smiles is None or fast_mapping is None:
                 fast_mapping = mol.smiles_atoms_order
                 smiles = str(mol)
+            if signature is None:
+                signature = bytes(mol)
             mol = dumps(mol)
         super().__init__(_structure=mol, signature=signature, smiles=smiles, _fast_mapping=fast_mapping)
 

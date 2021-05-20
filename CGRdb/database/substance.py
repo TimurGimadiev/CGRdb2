@@ -1,12 +1,14 @@
-from pony.orm import Database, PrimaryKey, Required, Set, Optional as PonyOptional, Json
-from .config import Entity
-from CGRtools import MoleculeContainer
-from .molecule import NonOrganic, Molecule
-from typing import Tuple, Iterable, Union, Dict, List, Optional
+from collections.abc import Iterable as abcIterable
 from functools import cached_property, reduce
 from operator import or_
+from typing import Tuple, Iterable, Union, Dict, List, Optional
 
-orgainc_set = ["B", "C", "N", "O", "P", "S", "F", "Cl", "Br", "I"]
+from CGRtools import MoleculeContainer
+from pony.orm import PrimaryKey, Required, Set, Optional as PonyOptional, Json
+
+from .config import Entity
+from .molecule import NonOrganic, Molecule, MoleculeStructure
+from ..utils import validate_molecule
 
 
 class Substance(Entity):
@@ -21,7 +23,7 @@ class Substance(Entity):
         """
         super().__init__()
         if substance is not None:
-            if isinstance(substance, Iterable):
+            if not isinstance(substance, abcIterable):
                 raise ValueError("Iterable type consisted of tuples should be provided")
             substance = list(substance)
             for mol, frac in substance:
@@ -31,7 +33,19 @@ class Substance(Entity):
                     raise TypeError('molar_fraction should be of float type')
 
             for mol, frac in substance:
-                ...
+                sao = mol.smiles_atoms_order
+                if validate_molecule(mol):
+                    if (ms := MoleculeStructure.get(signature=bytes(mol))) is None:
+                        structure = Molecule(mol)
+                        mapping = None
+                    else:
+                        structure = ms.molecule
+                        mapping = dict(zip(ms._fast_mapping, sao))
+                elif (structure := NonOrganic.get(signature=bytes(mol))) is None:
+                    structure = NonOrganic(mol)
+                    mapping = None
+                else:
+                    mapping = dict(zip(structure._fast_mapping, sao))
                 SubstanceStructure(structure, self, molar_fraction=frac, mapping=mapping)
 
     @cached_property
@@ -47,12 +61,9 @@ class SubstanceStructure(Entity):
     molecule = PonyOptional('Molecule')
     non_organic = PonyOptional('NonOrganic')
 
-    def __init__(self, structure: Union[Molecule, NonOrganic], substance: 'Substance', /, *,
+    def __init__(self, structure: Union[Molecule, NonOrganic], substance: Substance, /, *,
                  molar_fraction: Optional[float] = None,
                  mapping: Union[Dict[int, int], List[Tuple[int, int]], None] = None):
-        if molar_fraction is not None and not isinstance(molar_fraction, float):
-            raise TypeError('molar_fraction should be of float type')
-
         if isinstance(mapping, dict):
             if not all(isinstance(x, int) for x in mapping.items() for x in x):
                 raise TypeError('Mapping is dict that contains following structure: '
@@ -80,9 +91,13 @@ class SubstanceStructure(Entity):
     @cached_property
     def structure(self):
         if self.molecule:
-            return self.molecule.canonic_structure.structure.remap(self.mapping, copy=True)
+            if self.mapping:
+                return self.molecule.canonic_structure.structure.remap(self.mapping, copy=True)
+            return self.molecule.canonic_structure.structure
         else:
-            return self.non_organic.structure.remap(self.mapping, copy=True)
+            if self.mapping:
+                return self.non_organic.structure.remap(self.mapping, copy=True)
+            return self.non_organic.structure
 
     @cached_property
     def mapping(self):
