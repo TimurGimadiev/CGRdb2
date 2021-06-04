@@ -20,6 +20,7 @@ from .config import db
 from .molecule import *
 from .reaction import *
 from .substance import *
+from .indexes import *
 from pony.orm import Database
 
-__all__ = ['db', 'Reaction']
+__all__ = ['db', 'Reaction', 'similatiryidx_create']

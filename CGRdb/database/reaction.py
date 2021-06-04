@@ -2,7 +2,7 @@ from functools import cached_property
 from typing import Optional, Union, List, Dict, Tuple
 
 from CGRtools.containers import ReactionContainer
-from pony.orm import PrimaryKey, Required, Optional as PonyOptional, Set, Json
+from pony.orm import PrimaryKey, Required, Optional as PonyOptional, Set, Json, IntArray
 
 from .config import Entity
 from .substance import Substance
@@ -11,6 +11,7 @@ from .substance import Substance
 class Reaction(Entity):
     id = PrimaryKey(int, auto=True)
     substances = Set('ReactionSubstance')
+    #fingerprint = PonyOptional(IntArray)
 
     def __init__(self, reaction: Optional[ReactionContainer] = None, /):
         super().__init__()
@@ -21,6 +22,19 @@ class Reaction(Entity):
                 ReactionSubstance(Substance(((x, None),)), self, False)
             for x in reaction.products:
                 ReactionSubstance(Substance(((x, None),)), self, True)
+        self.fingerprint = self.structure
+
+    @cached_property
+    def structure(self):
+        reactants = []
+        products = []
+        for i in self.substances:
+            if i.is_product:
+                products.append(i.structure)
+            else:
+                reactants.append(i.structure)
+        reaction = ReactionContainer(reactants=reactants, products=products)
+        return reaction
 
 
 class ReactionSubstance(Entity):
@@ -29,6 +43,7 @@ class ReactionSubstance(Entity):
     _mapping = PonyOptional(Json, column='mapping', nullable=True)
     reaction = Required('Reaction')
     substance = Required('Substance')
+
 
     def __init__(self, substance: Substance, reaction: Reaction, is_product: bool, /, *,
                  mapping: Union[Dict[int, int], List[Tuple[int, int]], None] = None):
