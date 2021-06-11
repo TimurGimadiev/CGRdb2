@@ -3,7 +3,6 @@ from pony.orm import PrimaryKey, Required, Json, Database, db_session
 
 db = Database()
 Entity = db.Entity
-
 config = {}
 
 

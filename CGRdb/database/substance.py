@@ -7,7 +7,7 @@ from CGRtools import MoleculeContainer
 from pony.orm import PrimaryKey, Required, Set, Optional as PonyOptional, Json
 
 from .config import Entity
-from .molecule import NonOrganic, Molecule, MoleculeStructure
+from . import molecule #NonOrganic, Molecule, MoleculeStructure
 from ..utils import validate_molecule
 
 
@@ -35,14 +35,14 @@ class Substance(Entity):
             for mol, frac in substance:
                 sao = mol.smiles_atoms_order
                 if validate_molecule(mol):
-                    if (ms := MoleculeStructure.get(signature=bytes(mol))) is None:
-                        structure = Molecule(mol)
+                    if (ms := molecule.MoleculeStructure.get(signature=bytes(mol))) is None:
+                        structure = molecule.Molecule(mol)
                         mapping = None
                     else:
                         structure = ms.molecule
                         mapping = dict(zip(ms._fast_mapping, sao))
-                elif (structure := NonOrganic.get(signature=bytes(mol))) is None:
-                    structure = NonOrganic(mol)
+                elif (structure := molecule.NonOrganic.get(signature=bytes(mol))) is None:
+                    structure = molecule.NonOrganic(mol)
                     mapping = None
                 else:
                     mapping = dict(zip(structure._fast_mapping, sao))
@@ -61,7 +61,7 @@ class SubstanceStructure(Entity):
     molecule = PonyOptional('Molecule')
     non_organic = PonyOptional('NonOrganic')
 
-    def __init__(self, structure: Union[Molecule, NonOrganic], substance: Substance, /, *,
+    def __init__(self, structure: Union['molecule.Molecule', 'molecule.NonOrganic'], substance: Substance, /, *,
                  molar_fraction: Optional[float] = None,
                  mapping: Union[Dict[int, int], List[Tuple[int, int]], None] = None):
         if isinstance(mapping, dict):
@@ -77,10 +77,10 @@ class SubstanceStructure(Entity):
         elif mapping is not None:
             raise TypeError('Mapping of Substance to NonOrganic or Molecule expected')
 
-        if isinstance(structure, Molecule):
+        if isinstance(structure, molecule.Molecule):
             molecule = structure
             non_organic = None
-        elif isinstance(structure, NonOrganic):
+        elif isinstance(structure, molecule.NonOrganic):
             molecule = None
             non_organic = structure
         else:

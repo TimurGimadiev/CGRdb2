@@ -1,15 +1,18 @@
-from .config import Entity, Config
-from pony.orm import Required, PrimaryKey, IntArray, db_session
-from ..utils import MinHashLSH
-from datasketch import MinHash
-from tqdm import tqdm
-from . import config
-from datasketch.lsh import _optimal_param
 import json
-from dataclasses import dataclass
-from typing import Any
-from psycopg2.errors import DuplicateCursor
+from types import MethodType
 
+from datasketch import MinHash
+from datasketch.lsh import _optimal_param
+from pony.orm import Required, PrimaryKey, IntArray, db_session
+from tqdm import tqdm
+
+from . import config, db
+from .config import Entity, Config
+from ..utils import MinHashLSH
+from uuid import uuid4
+from collections import namedtuple
+
+RequestPack = namedtuple('RequestPack', ['request', 'postprocess'])
 
 class MoleculeSimilarityIndex(Entity):
     band = Required(int)
@@ -18,26 +21,39 @@ class MoleculeSimilarityIndex(Entity):
     PrimaryKey(band, key)
 
 
-def molecule_similatiryidx_create(db):
+def molecule_similatiryidx_create(self):
     num_permute = config.lsh_num_permute or 64
     threshold = config.lsh_threshold or 0.7
-    db.execute(f"""DELETE FROM MoleculeSimilarityIndex WHERE 1=1""")
-    db.commit()
+    self.execute(f"""DELETE FROM MoleculeSimilarityIndex WHERE 1=1""")
+    self.commit()
     lsh = MinHashLSH(threshold=threshold, num_perm=num_permute, hashfunc=hash)
     b, r = _optimal_param(threshold, num_permute, 0.5, 0.5)
     hashranges = [(i * r, (i + 1) * r) for i in range(b)]
     Config(key="hashranges", value=json.dumps(hashranges))
     with db_session:
-        db.execute(f"""DELETE FROM MoleculeSimilarityIndex WHERE 1=1""")
-        db.commit()
-        for idx, fingerprint in tqdm(db.execute(f'SELECT id, fingerprint FROM MoleculeStructure')):
+        self.execute(f"""DELETE FROM MoleculeSimilarityIndex WHERE 1=1""")
+        self.commit()
+        for idx, fingerprint in tqdm(self.execute(f'SELECT id, fingerprint FROM MoleculeStructure')):
             h = MinHash(num_perm=num_permute, hashfunc=hash)
             h.update_batch(fingerprint)
             lsh.insert(idx, h, check_duplication=False)
         for n, ht in enumerate(lsh.hashtables, 1):
             for key, value in ht._dict.items():
-                db.insert(MoleculeSimilarityIndex, band=n, key=key, records=list(value))
-            db.commit()
+                self.insert(MoleculeSimilarityIndex, band=n, key=key, records=list(value))
+            self.commit()
+
+
+def reaction_similatiryidx_create(self):
+    raise NotImplementedError
+
+    num_permute = config.lsh_num_permute or 64
+    threshold = config.lsh_threshold or 0.7
+    self.execute(f"""DELETE FROM MoleculeSimilarityIndex WHERE 1=1""")
+    self.commit()
+    lsh = MinHashLSH(threshold=threshold, num_perm=num_permute, hashfunc=hash)
+    b, r = _optimal_param(threshold, num_permute, 0.5, 0.5)
+    hashranges = [(i * r, (i + 1) * r) for i in range(b)]
+    pass
 
 
 class CursorHolder:
@@ -97,6 +113,9 @@ class CursorHolder:
 #             for key, value in ht._dict.items():
 #                 db.insert(MoleculeSimilarityIndex, band=n, key=key, records=list(value))
 #             db.commit()
+
+
+db.create_index = MethodType(molecule_similatiryidx_create, db)
 
 
 __all__ = ['MoleculeSimilarityIndex', 'molecule_similatiryidx_create']
