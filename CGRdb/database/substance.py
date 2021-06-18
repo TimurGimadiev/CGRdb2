@@ -78,14 +78,14 @@ class SubstanceStructure(Entity):
             raise TypeError('Mapping of Substance to NonOrganic or Molecule expected')
 
         if isinstance(structure, molecule.Molecule):
-            molecule = structure
+            mol = structure
             non_organic = None
         elif isinstance(structure, molecule.NonOrganic):
-            molecule = None
+            mol = None
             non_organic = structure
         else:
             raise TypeError('At least one either Molecule or NonOrganic required')
-        super().__init__(molar_fraction=molar_fraction, molecule=molecule, _mapping=mapping,
+        super().__init__(molar_fraction=molar_fraction, molecule=mol, _mapping=mapping,
                          non_organic=non_organic, substance=substance)
 
     @cached_property

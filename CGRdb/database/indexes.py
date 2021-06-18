@@ -14,6 +14,7 @@ from collections import namedtuple
 
 RequestPack = namedtuple('RequestPack', ['request', 'postprocess'])
 
+
 class MoleculeSimilarityIndex(Entity):
     band = Required(int)
     key = Required(int, size=64)
@@ -21,18 +22,21 @@ class MoleculeSimilarityIndex(Entity):
     PrimaryKey(band, key)
 
 
+def fingerprintidx_create(self):
+    self.execute("CREATE INDEX idx_moleculestructure ON MoleculeStructure USING GIST(fingerprint gist__intbig_ops);")
+    self.execute("CREATE INDEX idx_fingerprint_len ON moleculestructure(fingerprint_len);")
+
 def molecule_similatiryidx_create(self):
     num_permute = config.lsh_num_permute or 64
     threshold = config.lsh_threshold or 0.7
-    self.execute(f"""DELETE FROM MoleculeSimilarityIndex WHERE 1=1""")
-    self.commit()
     lsh = MinHashLSH(threshold=threshold, num_perm=num_permute, hashfunc=hash)
     b, r = _optimal_param(threshold, num_permute, 0.5, 0.5)
     hashranges = [(i * r, (i + 1) * r) for i in range(b)]
-    Config(key="hashranges", value=json.dumps(hashranges))
     with db_session:
         self.execute(f"""DELETE FROM MoleculeSimilarityIndex WHERE 1=1""")
+        self.execute(f"""DELETE FROM Config c WHERE c.key='hashranges' """)
         self.commit()
+        Config(key="hashranges", value=json.dumps(hashranges))
         for idx, fingerprint in tqdm(self.execute(f'SELECT id, fingerprint FROM MoleculeStructure')):
             h = MinHash(num_perm=num_permute, hashfunc=hash)
             h.update_batch(fingerprint)
@@ -75,12 +79,14 @@ class CursorHolder:
         return self
 
     def __next__(self):
-        res = self.cursor.fetchone()
-        if res is not None:
-            return self.function(res)
-        else:
-            self.flush()
-            raise StopIteration
+        while True:
+            res = self.cursor.fetchone()
+            if res is not None:
+                result = self.function(res)
+                if result:
+                    return result
+            else:
+                raise StopIteration("No more suitable objects")
 
     def flush(self):
         self.cursor.close()

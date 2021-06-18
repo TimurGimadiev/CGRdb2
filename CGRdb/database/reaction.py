@@ -67,22 +67,44 @@ class Reaction(Entity):
             return Reaction[result]
 
     @classmethod
-    def get(cls, reaction: ReactionContainer, mapping=False):
+    def __postprocess_list_reactions(cls, result):
+        reaction, mols, score = result
+        return Reaction[reaction], [molecule.Molecule[x] for x in mols], score
+
+    @classmethod
+    def __postprocess_list_reactions_mapped(cls, result, *, initial_cgr=None):
+        if not initial_cgr:
+            raise ValueError("Initial CGR of reaction core is not provided")
+        reaction, mols, score = result
+        reaction = Reaction[reaction]
+        cgr = ~reaction.structure
+        if (cgr) > initial_cgr:
+            return reaction, [molecule.Molecule[x] for x in mols], score
+
+    @classmethod
+    def get_by_structure(cls, reaction: ReactionContainer, mapping: bool = False, fix_roles: bool = True,
+                         request_only: bool = False):
         if not isinstance(reaction, ReactionContainer):
             raise TypeError("CGRtools.ReactionContainer expected as input")
         reactants = []
         products = []
         for mol in reaction.reactants:
             if validate_molecule(mol):
-                reactants.append(molecule.Molecule._exact_match_in_reactions(mol).request)
+                reactants.append(molecule.Molecule.get_reactions_with(mol, request_only=True,
+                                                                      is_product=False if fix_roles else None))
             else:
-                reactants.append(molecule.NonOrganic._exact_match_in_reactions(mol).request)
+                reactants.append(molecule.NonOrganic.get_reactions_with(mol, request_only=True,
+                                                                        is_product=False if fix_roles else None))
         for mol in reaction.products:
             if validate_molecule(mol):
-                products.append(molecule.Molecule._exact_match_in_reactions(mol).request)
+                products.append(molecule.Molecule.get_reactions_with(mol, request_only=True,
+                                                                     is_product=True if fix_roles else None))
             else:
-                products.append(molecule.NonOrganic._exact_match_in_reactions(mol).request)
+                reactants.append(molecule.NonOrganic.get_reactions_with(mol, request_only=True,
+                                                                        is_product=True if fix_roles else None))
         request = "("+") INTERSECT (".join(reactants + products)+")"
+        if request_only:
+            return request
         if not mapping:
             return CursorHolder(RequestPack(request, cls.__postprocess_exact_reaction), cls._database_)
         else:
@@ -90,40 +112,104 @@ class Reaction(Entity):
                                                              initial=reaction)), cls._database_)
 
     def structurally_same(self, mapping=False):
-        return self.get(self.structure, mapping)
+        return self.get_by_structure(self.structure, mapping)
 
     @classmethod
-    def similar_to(cls, reaction, ordered=True, mapping=False):
-        raise NotImplemented
+    def similar_to(cls, reaction: ReactionContainer, ordered: bool = True, fix_roles: bool = True,
+                   mapping: bool = False, request_only=False):
         if not isinstance(reaction, ReactionContainer):
             raise TypeError("CGRtools.ReactionContainer expected as input")
         reactants = []
         for mol in reaction.reactants:
             if validate_molecule(mol):
-                fingerprint = LinearFingerprint(**config.fingerprint).transform_bitset([mol])[0]
-                reactants.append(molecule.Molecule._search_similar_unordered_in_reactions_request(fingerprint).request)
+                reactants.append(
+                    molecule.Molecule.similar_to_structure_in_reactions(mol, ordered=ordered,
+                                                                        is_product=True if fix_roles else None,
+                                                                        request_only=True))
         products = []
         for mol in reaction.products:
             if validate_molecule(mol):
-                fingerprint = LinearFingerprint(**config.fingerprint).transform_bitset([mol])[0]
-                products.append(molecule.Molecule._search_similar_unordered_in_reactions_request(fingerprint).request)
+                products.append(
+                    molecule.Molecule.similar_to_structure_in_reactions(mol, ordered=ordered,
+                                                                        is_product=False if fix_roles else None,
+                                                                        request_only=True))
         if not reactants and not products:
             raise ValueError("This reaction consist only from molecules with Non_organic atoms or ions,"
                              " similarity search is not available for them")
-        request = "("+") INTERSECT (".join(reactants + products)+")"
-        if not mapping:
-            return CursorHolder(RequestPack(request, cls.__postprocess_exact_reaction), cls._database_)
+        if ordered:
+            request_core = "(" + ") UNION (".join(reactants + products) + ") "
+            request = f"""SELECT s.reaction_id, s.x, t tanimoto
+                                      FROM (SELECT a.reaction_id, array_agg(a.molecule_id) x, sum(a.tanimoto) t
+                                           FROM ({request_core}) as a
+                                           GROUP BY a.reaction_id) s
+                                      ORDER BY tanimoto DESC;
+                                   """
         else:
-            return CursorHolder(RequestPack(request, partial(cls.__postprocess_exact_reaction_mapped,
-                                                             initial=reaction)), cls._database_)
-
+            request_core = "("+") UNION (".join(reactants + products)+") "
+            request = f"""SELECT s.reaction_id, s.x, array_length(s.x,1) l 
+                          FROM (SELECT a.reaction_id, array_agg(a.molecule_id) x 
+                               FROM ({request_core}) as a
+                               GROUP BY a.reaction_id) s
+                          ORDER BY l DESC;
+                       """
+        if request_only:
+            return request
+        if not mapping:
+            return CursorHolder(RequestPack(request, cls.__postprocess_list_reactions), cls._database_)
+        else:
+            cgr = ~reaction
+            core = cgr.substructure(cgr.center_atoms)
+            return CursorHolder(RequestPack(request, partial(cls.__postprocess_list_reactions_mapped,
+                                                             initial_cgr=core)), cls._database_)
 
     @classmethod
-    def broad_similarity(cls, reaction: [ReactionContainer, "Reaction"]):
-        raise NotImplemented
-
-    def substructure(self):
-        raise NotImplemented
+    def substructure_to(cls, reaction: ReactionContainer, ordered: bool = True, fix_roles: bool = True,
+                   mapping: bool = False, request_only=False):
+        if not isinstance(reaction, ReactionContainer):
+            raise TypeError("CGRtools.ReactionContainer expected as input")
+        reactants = []
+        for mol in reaction.reactants:
+            if validate_molecule(mol):
+                reactants.append(
+                    molecule.Molecule.substructure_to_structure_in_reactions(mol,
+                                                                             ordered=ordered,
+                                                                             is_product=True if fix_roles else None,
+                                                                             request_only=True))
+        products = []
+        for mol in reaction.products:
+            if validate_molecule(mol):
+                products.append(
+                    molecule.Molecule.substructure_to_structure_in_reactions(mol,
+                                                                             ordered=ordered,
+                                                                             is_product=False if fix_roles else None,
+                                                                             request_only=True))
+        if not reactants and not products:
+            raise ValueError("This reaction consist only from molecules with Non_organic atoms or ions,"
+                             " similarity search is not available for them")
+        request_core = "(" + ") UNION (".join(reactants + products) + ") "
+        if ordered:
+            request = f"""SELECT s.reaction_id, s.x, t tanimoto
+                                      FROM (SELECT a.reaction_id, array_agg(a.molecule_id) x, sum(a.tanimoto) t
+                                           FROM ({request_core}) as a
+                                           GROUP BY a.reaction_id) s
+                                      ORDER BY tanimoto DESC;
+                                   """
+        else:
+            request = f"""SELECT s.reaction_id, s.x, array_length(s.x,1) l 
+                          FROM (SELECT a.reaction_id, array_agg(a.molecule_id) x 
+                               FROM ({request_core}) as a
+                               GROUP BY a.reaction_id) s
+                          ORDER BY l DESC;
+                       """
+        if request_only:
+            return request
+        if not mapping:
+            return CursorHolder(RequestPack(request, cls.__postprocess_list_reactions), cls._database_)
+        else:
+            cgr = ~reaction
+            core = cgr.substructure(cgr.center_atoms)
+            return CursorHolder(RequestPack(request, partial(cls.__postprocess_list_reactions_mapped,
+                                                             initial_cgr=core)), cls._database_)
 
     def substructure_mappless(self):
         raise NotImplemented
