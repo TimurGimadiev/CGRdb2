@@ -123,21 +123,21 @@ class Reaction(Entity):
         for mol in reaction.reactants:
             if validate_molecule(mol):
                 reactants.append(
-                    molecule.Molecule.similar_to_structure_in_reactions(mol, ordered=ordered,
-                                                                        is_product=True if fix_roles else None,
-                                                                        request_only=True))
+                    molecule.Molecule.similars_in_reactions(mol, ordered=ordered,
+                                                            is_product=True if fix_roles else None,
+                                                            request_only=True))
         products = []
         for mol in reaction.products:
             if validate_molecule(mol):
                 products.append(
-                    molecule.Molecule.similar_to_structure_in_reactions(mol, ordered=ordered,
-                                                                        is_product=False if fix_roles else None,
-                                                                        request_only=True))
+                    molecule.Molecule.similars_in_reactions(mol, ordered=ordered,
+                                                            is_product=False if fix_roles else None,
+                                                            request_only=True))
         if not reactants and not products:
             raise ValueError("This reaction consist only from molecules with Non_organic atoms or ions,"
                              " similarity search is not available for them")
         if ordered:
-            request_core = "(" + ") UNION (".join(reactants + products) + ") "
+            request_core = "(" + ") UNION ALL (".join(reactants + products) + ") "
             request = f"""SELECT s.reaction_id, s.x, t tanimoto
                                       FROM (SELECT a.reaction_id, array_agg(a.molecule_id) x, sum(a.tanimoto) t
                                            FROM ({request_core}) as a
@@ -171,22 +171,22 @@ class Reaction(Entity):
         for mol in reaction.reactants:
             if validate_molecule(mol):
                 reactants.append(
-                    molecule.Molecule.substructure_to_structure_in_reactions(mol,
-                                                                             ordered=ordered,
-                                                                             is_product=True if fix_roles else None,
-                                                                             request_only=True))
+                    molecule.Molecule.substructures_in_reactions(mol,
+                                                                 ordered=ordered,
+                                                                 is_product=True if fix_roles else None,
+                                                                 request_only=True))
         products = []
         for mol in reaction.products:
             if validate_molecule(mol):
                 products.append(
-                    molecule.Molecule.substructure_to_structure_in_reactions(mol,
-                                                                             ordered=ordered,
-                                                                             is_product=False if fix_roles else None,
-                                                                             request_only=True))
+                    molecule.Molecule.substructures_in_reactions(mol,
+                                                                 ordered=ordered,
+                                                                 is_product=False if fix_roles else None,
+                                                                 request_only=True))
         if not reactants and not products:
             raise ValueError("This reaction consist only from molecules with Non_organic atoms or ions,"
                              " similarity search is not available for them")
-        request_core = "(" + ") UNION (".join(reactants + products) + ") "
+        request_core = "(" + ") UNION ALL (".join(reactants + products) + ") "
         if ordered:
             request = f"""SELECT s.reaction_id, s.x, t tanimoto
                                       FROM (SELECT a.reaction_id, array_agg(a.molecule_id) x, sum(a.tanimoto) t

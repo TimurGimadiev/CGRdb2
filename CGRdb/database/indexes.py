@@ -23,7 +23,9 @@ class MoleculeSimilarityIndex(Entity):
 
 
 def fingerprintidx_create(self):
+    print("creation of index for fingerprints")
     self.execute("CREATE INDEX idx_moleculestructure ON MoleculeStructure USING GIST(fingerprint gist__intbig_ops);")
+    print("creation of index for fingerprint length")
     self.execute("CREATE INDEX idx_fingerprint_len ON moleculestructure(fingerprint_len);")
 
 def molecule_similatiryidx_create(self):
@@ -37,11 +39,13 @@ def molecule_similatiryidx_create(self):
         self.execute(f"""DELETE FROM Config c WHERE c.key='hashranges' """)
         self.commit()
         Config(key="hashranges", value=json.dumps(hashranges))
+        print("Creation of LSH")
         for idx, fingerprint in tqdm(self.execute(f'SELECT id, fingerprint FROM MoleculeStructure')):
             h = MinHash(num_perm=num_permute, hashfunc=hash)
             h.update_batch(fingerprint)
             lsh.insert(idx, h, check_duplication=False)
-        for n, ht in enumerate(lsh.hashtables, 1):
+        print("Uploading LSH tables into DB")
+        for n, ht in tqdm(enumerate(lsh.hashtables, 1)):
             for key, value in ht._dict.items():
                 self.insert(MoleculeSimilarityIndex, band=n, key=key, records=list(value))
             self.commit()
@@ -80,6 +84,7 @@ class CursorHolder:
 
     def __next__(self):
         while True:
+            db.flush()
             res = self.cursor.fetchone()
             if res is not None:
                 result = self.function(res)
@@ -88,9 +93,11 @@ class CursorHolder:
             else:
                 raise StopIteration("No more suitable objects")
 
-    def flush(self):
-        self.cursor.close()
-        self.used_names.remove(self.name)
+    def __del__(self):
+        try:
+            self.cursor.close()
+        except Exception:
+            pass
 
 # class ReactionSimilairityIndex(Entity):
 #     band = Required(int)
@@ -121,7 +128,8 @@ class CursorHolder:
 #             db.commit()
 
 
-db.create_index = MethodType(molecule_similatiryidx_create, db)
+db.create_sim_index = MethodType(molecule_similatiryidx_create, db)
+db.create_fing_index = MethodType(fingerprintidx_create, db)
 
 
 __all__ = ['MoleculeSimilarityIndex', 'molecule_similatiryidx_create']

@@ -16,11 +16,11 @@
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with this program; if not, see <https://www.gnu.org/licenses/>.
 #
-from .config import db
+from .config import db, Config
 from .molecule import *
 from .reaction import *
 from .substance import *
 from .indexes import *
 
 
-__all__ = ['db', 'Reaction']
+__all__ = ['db', 'Reaction', 'Config']

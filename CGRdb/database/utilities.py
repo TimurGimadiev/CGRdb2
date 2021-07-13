@@ -3,12 +3,12 @@ from pony.orm import Database, PrimaryKey, Required, Set, IntArray, Optional, Js
 from .config import Entity
 
 
-class Config(Entity):
-    _table_ = 'db_config'
-    id = PrimaryKey(int, auto=True)
-    name = Required(str, unique=True)
-    config = Required(Json, index=False, optimistic=False)
-    version = Required(str)
+#class Config(Entity):
+#    _table_ = 'db_config'
+#    id = PrimaryKey(int, auto=True)
+#    name = Required(str, unique=True)
+#    config = Required(Json, index=False, optimistic=False)
+#    version = Required(str)
 
 class ModificationStamp(Entity):
     id = PrimaryKey(int, auto=True)

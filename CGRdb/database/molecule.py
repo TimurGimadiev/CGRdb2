@@ -42,15 +42,30 @@ class Molecule(Entity):
         return request_end
 
     @classmethod
-    def __postprocess_unordered_molecules(cls, result, *, fingerprint=None):
+    def __postprocess_unordered_molecules(cls, result, *, fingerprint=None, no_graph=False):
         struct = MoleculeStructure[result[1]]
         tanimoto = len(set(fingerprint).intersection(struct.fingerprint)) / \
                    len(set(fingerprint).union(struct.fingerprint))
-        return Molecule[result[0]], struct, tanimoto
+        mol = Molecule[result[0]]
+        if no_graph:
+            for i in mol.structures:
+                i._vals_.pop(MoleculeStructure.fingerprint)
+                i._vals_.pop(MoleculeStructure._structure)
+                i._vals_.pop(MoleculeStructure.signature)
+                i._vals_.pop(MoleculeStructure._fast_mapping)
+        return mol, struct, tanimoto
 
     @classmethod
-    def __postprocess_ordered_molecules(cls, result):
-        return Molecule[result[0]], MoleculeStructure[result[1]], result[2]
+    def __postprocess_ordered_molecules(cls, result, no_graph=False):
+        mol = Molecule[result[0]]
+        struct = MoleculeStructure[result[1]]
+        if no_graph:
+            for i in mol.structures:
+                i._vals_.pop(MoleculeStructure.fingerprint)
+                i._vals_.pop(MoleculeStructure._structure)
+                i._vals_.pop(MoleculeStructure.signature)
+                i._vals_.pop(MoleculeStructure._fast_mapping)
+        return mol, struct, result[2]
 
     @classmethod
     def __postprocess_unordered_reaction(cls, result, *, fingerprint=None):
@@ -114,10 +129,14 @@ class Molecule(Entity):
         return RequestPack(request, cls.__postprocess_exact_mol)
 
     @classmethod
-    def get_by_structure(cls, mol: MoleculeContainer):
-        if not isinstance(mol, MoleculeContainer):
-            raise ValueError("CGRtools.MoleculeContainer should be provided")
-        return CursorHolder(cls._exact_match(mol), cls._database_)
+    def get(cls, mol: Optional[MoleculeContainer] = None, **kwargs):  # fix this
+        if mol is not None:
+            if not isinstance(mol, MoleculeContainer):
+                raise ValueError("CGRtools.MoleculeContainer should be provided")
+            return CursorHolder(cls._exact_match(mol), cls._database_)
+        else:
+            return super().get(**kwargs)
+
 
     @classmethod
     def _exact_match_in_reactions(cls, mol):
@@ -159,17 +178,18 @@ class Molecule(Entity):
 # similarity search block
 
     @classmethod
-    def _similarity_unorderd(cls, fingerprint: list) -> RequestPack:
+    def _similarity_unorderd(cls, fingerprint: list, no_graph=False) -> RequestPack:
         request_end = cls.__similarity_filtering(fingerprint)
         request = f"""
             SELECT x.molecule m, x.id
             FROM MoleculeStructure x
             WHERE x.id IN (
             SELECT distinct unnest(records) m FROM moleculesimilarityindex WHERE {request_end})"""
-        return RequestPack(request, partial(cls.__postprocess_unordered_molecules, fingerprint=fingerprint))
+        return RequestPack(request, partial(cls.__postprocess_unordered_molecules,
+                                            fingerprint=fingerprint, no_graph=no_graph))
 
     @classmethod
-    def _similarity_ordered(cls, fingerprint: list) -> RequestPack:
+    def _similarity_ordered(cls, fingerprint: list, no_graph=False) -> RequestPack:
         request_end = cls.__similarity_filtering(fingerprint)
         request = f'''
            SELECT x.molecule m, x.id, icount(x.fingerprint & '{set(fingerprint)}') / icount(x.fingerprint |
@@ -179,77 +199,51 @@ class Molecule(Entity):
            SELECT distinct unnest(records) m FROM moleculesimilarityindex WHERE {request_end})
            ORDER BY t DESC
            '''
-        return RequestPack(request, cls.__postprocess_ordered_molecules)
+        return RequestPack(request, partial(cls.__postprocess_ordered_molecules, no_graph=no_graph))
 
-    @classmethod
-    def similar_to_structure(cls, mol: [MoleculeContainer, "Molecule"], ordered=True, request_only=False):
-        if isinstance(mol, Molecule):
-            fingerprint = mol.canonic_structure.fingerprint
-        elif isinstance(mol, MoleculeContainer):
-            fingerprint = LinearFingerprint(**config.fingerprint).transform_bitset([mol])[0]
+    def similars(self: Union[MoleculeContainer, "Molecule"], ordered=True, request_only=False, no_graph=False):
+        if isinstance(self, Molecule):
+            fingerprint = self.canonic_structure.fingerprint
+        elif isinstance(self, MoleculeContainer):
+            fingerprint = LinearFingerprint(**config.fingerprint).transform_bitset([self])[0]
+            self = Molecule
         else:
             raise ValueError(" Only CGRtools.MoleculeContainer or CGRdb.Molecule")
         if ordered:
-            request_pack = cls._similarity_ordered(fingerprint)
+            request_pack = self._similarity_ordered(fingerprint, no_graph=no_graph)
         else:
-            request_pack = cls._similarity_unorderd(fingerprint)
+            request_pack = self._similarity_unorderd(fingerprint, no_graph=no_graph)
         if request_only:
             return request_pack.request
-        return CursorHolder(request_pack, cls._database_)
+        return CursorHolder(request_pack, self._database_)
 
-    def similars(self, ordered=True):
-        return self.similar_to_structure(self, ordered)
-
-    #
-    # @classmethod
-    # def _similar_unordered_in_reactions(cls, fingerprint):
-    #     request_core, _ = cls._similarity_unorderd(fingerprint)
-    #     request = f'''
-    #     WITH
-    #     molecules as ({request_core}),
-    #     substances as (SELECT s.substance, molecules.m
-    #         FROM substancestructure s JOIN molecules ON s.molecule = molecules.m)
-    #     SELECT r.reaction as reaction_id, r_s.m as molecule_id FROM reactionsubstance r JOIN substances r_s
-    #     ON r.substance = r_s.substance'''
-    #     return RequestPack(request, partial(cls.__postprocess_unordered_reaction, fingerprint=fingerprint))
-    #
-    # @classmethod
-    # def _similar_ordered_in_reactions(cls, fingerprint):
-    #     request_core, _ = cls._similarity_ordered(fingerprint)
-    #     request = f'''
-    #         WITH
-    #         molecules as ({request_core}),
-    #         substances as (SELECT s.substance, molecules.m, molecules.t
-    #         FROM substancestructure s JOIN molecules ON s.molecule = molecules.m)
-    #         SELECT r.reaction as reaction_id, r_s.m as molecule_id, r_s.t as tanimoto
-    #         FROM reactionsubstance r JOIN substances r_s ON r.substance = r_s.substance'''
-    #     return RequestPack(request, cls.__postprocess_ordered_reaction)
-
-    @classmethod
-    def similar_to_structure_in_reactions(cls, mol: [MoleculeContainer, "Molecule"], ordered=True,
-                                          is_product: Optional[bool] = None, request_only=False):
-        if ordered:
-            request_pack = cls.__reactions_from_ordered(
-                cls.similar_to_structure(mol, ordered=ordered, request_only=True))
+    def similars_in_reactions(self: Union[MoleculeContainer, "Molecule"], ordered=True,
+                              is_product: Optional[bool] = None, request_only=False):
+        if isinstance(self, MoleculeContainer):
+            request = Molecule.similars(self, ordered=ordered, request_only=True)
+            self = Molecule
+        elif isinstance(self, Molecule):
+            request = self.similars(ordered=ordered, request_only=True)
         else:
-            request_pack = cls.__reactions_from_ordered(
-                cls.similar_to_structure(mol, ordered=ordered, request_only=True))
+            raise TypeError("Only CGRtools.MoleculeContainer or CGRdb.Molecule can be used")
+        if ordered:
+            request_pack = self.__reactions_from_ordered(request_core=request)
+        else:
+            request_pack = self.__reactions_from_ordered(request_core=request)
         if is_product is not None:
             if isinstance(is_product, bool):
-                cls.__role_filter(request_pack, is_product)
+                self.__role_filter(request_pack, is_product)
             else:
                 raise ValueError("is_product can be boolean (True for product, False for reactant) or None")
         if request_only:
             return request_pack.request
-        return CursorHolder(request_pack, cls._database_)
+        return CursorHolder(request_pack, self._database_)
 
-    def similar_in_reaction(self, ordered=True, is_product: Optional[str] = None):
-        return self.similar_to_structure_in_reactions(self, ordered=ordered, is_product=is_product)
 
 # substructure search block
 
     @classmethod
-    def _substructure_ordered(cls, fingerprint: list) -> RequestPack:
+    def _substructure_ordered(cls, fingerprint: list, no_graph=False) -> RequestPack:
         len_fp = len(fingerprint)
         request = f'''
         WITH table_1 AS (SELECT a.molecule, a.fingerprint, a.id, a.fingerprint_len 
@@ -263,84 +257,57 @@ class Molecule(Entity):
         FROM table_2 h JOIN MoleculeStructure s ON h.s = s.id
         ORDER BY h.t DESC
         '''
-        return RequestPack(request, cls.__postprocess_ordered_molecules)
+        return RequestPack(request, partial(cls.__postprocess_ordered_molecules, no_graph=no_graph))
 
     @classmethod
-    def _substructure_unordered(cls, fingerprint: list):
+    def _substructure_unordered(cls, fingerprint: list, no_graph=False):
         request = f'''
         WITH table_1 AS (SELECT a.molecule m, a.id s FROM MoleculeStructure a
         WHERE a.fingerprint @> '{set(fingerprint)}')
         SELECT h.m, h.s
         FROM table_1 h JOIN MoleculeStructure s ON h.s = s.id
         '''
-        return RequestPack(request, partial(cls.__postprocess_unordered_molecules, fingerprint=fingerprint))
+        return RequestPack(request, partial(cls.__postprocess_unordered_molecules,
+                                            fingerprint=fingerprint, no_graph=no_graph))
 
-    @classmethod
-    def substructres_to_structure(cls, mol: [MoleculeContainer, "Molecule"], ordered=True, request_only=False):
-        if isinstance(mol, Molecule):
-            fingerprint = mol.canonic_structure.fingerprint
-        elif isinstance(mol, MoleculeContainer):
-            fingerprint = LinearFingerprint(**config.fingerprint).transform_bitset([mol])[0]
+    def substructres(self: Union[MoleculeContainer, "Molecule"], ordered=True, request_only=False, no_graph=False):
+        if isinstance(self, Molecule):
+            fingerprint = self.canonic_structure.fingerprint
+        elif isinstance(self, MoleculeContainer):
+            fingerprint = LinearFingerprint(**config.fingerprint).transform_bitset([self])[0]
+            self = Molecule
         else:
             raise ValueError(" Only CGRtools.MoleculeContainer or CGRdb.Molecule")
         if ordered:
-            request_pack = cls._substructure_ordered(fingerprint)
+            request_pack = self._substructure_ordered(fingerprint, no_graph=no_graph)
         else:
-            request_pack = cls._substructure_unordered(fingerprint)
+            request_pack = self._substructure_unordered(fingerprint, no_graph=no_graph)
         if request_only:
             return request_pack.request
-        return CursorHolder(request_pack, cls._database_)
+        return CursorHolder(request_pack, self._database_)
 
-    def substructures(self, ordered=True):
-        return self.substructres_to_structure(self, ordered=ordered)
-
-    # @classmethod
-    # def _substructure_unordered_in_reactions(cls, fingerprint):
-    #     request_core, _ = cls._substructure_unordered(fingerprint)
-    #     request = f'''
-    #             WITH
-    #             molecules as ({request_core}),
-    #             substances as (SELECT s.substance, molecules.m
-    #                 FROM substancestructure s JOIN molecules ON s.molecule = molecules.m)
-    #             SELECT r.reaction as reaction_id, r_s.m as molecule_id FROM reactionsubstance r JOIN substances r_s
-    #             ON r.substance = r_s.substance'''
-    #     return RequestPack(request, partial(cls.__postprocess_unordered_reaction, fingerprint=fingerprint))
-
-    # @classmethod
-    # def _substructure_ordered_in_reactions(cls, fingerprint):
-    #     request_core, _ = cls._substructure_ordered(fingerprint)
-    #     request = f'''
-    #                     WITH
-    #                     molecules as ({request_core}),
-    #                     substances as (SELECT s.substance, molecules.m, molecules.t
-    #                     FROM substancestructure s JOIN molecules ON s.molecule = molecules.m)
-    #                     SELECT r.reaction as reaction_id, r_s.m as molecule_id, r_s.t as tanimoto
-    #                     FROM reactionsubstance r JOIN substances r_s ON r.substance = r_s.substance'''
-    #     return RequestPack(request, cls.__postprocess_ordered_reaction)
-
-    @classmethod
-    def substructure_to_structure_in_reactions(cls, mol: [MoleculeContainer, "Molecule"], ordered=True,
-                                               is_product: Optional[bool] = None, request_only=False):
-        if ordered:
-            request_pack = cls.__reactions_from_ordered(
-                cls.substructres_to_structure(mol, ordered=True, request_only=True))
-                #cls._substructure_ordered_in_reactions(fingerprint=fingerprint)
+    def substructures_in_reactions(self: Union[MoleculeContainer, "Molecule"], ordered=True,
+                                   is_product: Optional[bool] = None, request_only=False):
+        if isinstance(self, MoleculeContainer):
+            request = Molecule.substructres(self, ordered=ordered, request_only=True)
+            self = Molecule
+        elif isinstance(self, Molecule):
+            request = self.substructres(ordered=ordered, request_only=True)
         else:
-            request_pack = cls.__reactions_from_unordered(
-                cls.substructres_to_structure(mol, ordered=False, request_only=True))
-                #cls._substructure_unordered_in_reactions(fingerprint=fingerprint)
+            raise TypeError("Only CGRtools.MoleculeContainer or CGRdb.Molecule can be used")
+
+        if ordered:
+            request_pack = self.__reactions_from_ordered(request_core=request)
+        else:
+            request_pack = self.__reactions_from_unordered(request_core=request)
         if is_product is not None:
             if isinstance(is_product, bool):
-                cls.__role_filter(request_pack, is_product)
+                self.__role_filter(request_pack, is_product)
             else:
                 raise ValueError("is_product can be boolean (True for product, False for reactant) or None")
         if request_only:
             return request_pack.request
-        return CursorHolder(request_pack, cls._database_)
-
-    def substructures_in_reactions(self, ordered, is_product: Optional[bool] = None, request_only=False):
-        self.substructure_to_structure_in_reactions(self, ordered=ordered, is_product=is_product,
-                                                    request_only=request_only)
+        return CursorHolder(request_pack, self._database_)
 
 
 class MoleculeStructure(Entity):
@@ -435,7 +402,7 @@ class NonOrganic(Entity):
         return RequestPack(request, cls.__postprocess_exact_non_org)
 
     @classmethod
-    def get_by_structure(cls, mol: MoleculeContainer): # cannot use get not to overwrite pony
+    def get_by_structure(cls, mol: MoleculeContainer):  # cannot use get not to overwrite pony
         if not isinstance(mol, MoleculeContainer):
             raise ValueError("CGRtools.MoleculeContainer should be provided")
         return CursorHolder(cls._exact_match(mol), cls._database_)
