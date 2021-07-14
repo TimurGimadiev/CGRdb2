@@ -55,17 +55,19 @@ class Molecule(Entity):
                 i._vals_.pop(MoleculeStructure._fast_mapping)
         return mol, struct, tanimoto
 
-    @classmethod
-    def __postprocess_ordered_molecules(cls, result, no_graph=False):
+    @staticmethod
+    def __postprocess_ordered_molecules(result, substr=None):
         mol = Molecule[result[0]]
         struct = MoleculeStructure[result[1]]
-        if no_graph:
-            for i in mol.structures:
-                i._vals_.pop(MoleculeStructure.fingerprint)
-                i._vals_.pop(MoleculeStructure._structure)
-                i._vals_.pop(MoleculeStructure.signature)
-                i._vals_.pop(MoleculeStructure._fast_mapping)
-        return mol, struct, result[2]
+        tanimoto = result[2]
+        if substr is None:
+            return mol, struct, tanimoto
+        else:
+            if substr < struct.structure:
+                return mol, struct, tanimoto
+            # clean cache for memory keeping
+            del struct._vals_[MoleculeStructure._structure]
+            del struct.__dict__['structure']
 
     @classmethod
     def __postprocess_unordered_reaction(cls, result, *, fingerprint=None):
@@ -149,7 +151,7 @@ class Molecule(Entity):
         return RequestPack(request, cls.__postprocess_exact_reactions)
 
     @classmethod
-    def get_reactions_with(cls, mol: MoleculeContainer, is_product: Optional[bool] = None, request_only=False):
+    def reactions(cls, mol: MoleculeContainer, is_product: Optional[bool] = None, request_only=False):
         if not isinstance(mol, MoleculeContainer):
             raise ValueError("CGRtools.MoleculeContainer should be provided")
         request_pack = cls._exact_match_in_reactions(mol)
@@ -185,11 +187,10 @@ class Molecule(Entity):
             FROM MoleculeStructure x
             WHERE x.id IN (
             SELECT distinct unnest(records) m FROM moleculesimilarityindex WHERE {request_end})"""
-        return RequestPack(request, partial(cls.__postprocess_unordered_molecules,
-                                            fingerprint=fingerprint, no_graph=no_graph))
+        return RequestPack(request, partial(cls.__postprocess_unordered_molecules, fingerprint=fingerprint))
 
     @classmethod
-    def _similarity_ordered(cls, fingerprint: list, no_graph=False) -> RequestPack:
+    def _similarity_ordered(cls, fingerprint: list) -> RequestPack:
         request_end = cls.__similarity_filtering(fingerprint)
         request = f'''
            SELECT x.molecule m, x.id, icount(x.fingerprint & '{set(fingerprint)}') / icount(x.fingerprint |
@@ -199,9 +200,9 @@ class Molecule(Entity):
            SELECT distinct unnest(records) m FROM moleculesimilarityindex WHERE {request_end})
            ORDER BY t DESC
            '''
-        return RequestPack(request, partial(cls.__postprocess_ordered_molecules, no_graph=no_graph))
+        return RequestPack(request, cls.__postprocess_ordered_molecules)
 
-    def similars(self: Union[MoleculeContainer, "Molecule"], ordered=True, request_only=False, no_graph=False):
+    def similars(self: Union[MoleculeContainer, "Molecule"], ordered=True, request_only=False):
         if isinstance(self, Molecule):
             fingerprint = self.canonic_structure.fingerprint
         elif isinstance(self, MoleculeContainer):
@@ -210,9 +211,9 @@ class Molecule(Entity):
         else:
             raise ValueError(" Only CGRtools.MoleculeContainer or CGRdb.Molecule")
         if ordered:
-            request_pack = self._similarity_ordered(fingerprint, no_graph=no_graph)
+            request_pack = self._similarity_ordered(fingerprint)
         else:
-            request_pack = self._similarity_unorderd(fingerprint, no_graph=no_graph)
+            request_pack = self._similarity_unorderd(fingerprint)
         if request_only:
             return request_pack.request
         return CursorHolder(request_pack, self._database_)
@@ -243,7 +244,7 @@ class Molecule(Entity):
 # substructure search block
 
     @classmethod
-    def _substructure_ordered(cls, fingerprint: list, no_graph=False) -> RequestPack:
+    def _substructure_ordered(cls, fingerprint: list, substr=None) -> RequestPack:
         len_fp = len(fingerprint)
         request = f'''
         WITH table_1 AS (SELECT a.molecule, a.fingerprint, a.id, a.fingerprint_len 
@@ -257,10 +258,10 @@ class Molecule(Entity):
         FROM table_2 h JOIN MoleculeStructure s ON h.s = s.id
         ORDER BY h.t DESC
         '''
-        return RequestPack(request, partial(cls.__postprocess_ordered_molecules, no_graph=no_graph))
+        return RequestPack(request, partial(cls.__postprocess_ordered_molecules, substr=substr))
 
     @classmethod
-    def _substructure_unordered(cls, fingerprint: list, no_graph=False):
+    def _substructure_unordered(cls, fingerprint: list, substr=None):
         request = f'''
         WITH table_1 AS (SELECT a.molecule m, a.id s FROM MoleculeStructure a
         WHERE a.fingerprint @> '{set(fingerprint)}')
@@ -268,20 +269,22 @@ class Molecule(Entity):
         FROM table_1 h JOIN MoleculeStructure s ON h.s = s.id
         '''
         return RequestPack(request, partial(cls.__postprocess_unordered_molecules,
-                                            fingerprint=fingerprint, no_graph=no_graph))
+                                            fingerprint=fingerprint, substr=substr))
 
-    def substructres(self: Union[MoleculeContainer, "Molecule"], ordered=True, request_only=False, no_graph=False):
+    def substructres(self: Union[MoleculeContainer, "Molecule"], ordered=True, request_only=False):
         if isinstance(self, Molecule):
             fingerprint = self.canonic_structure.fingerprint
+            mol = self.canonic_structure.structure
         elif isinstance(self, MoleculeContainer):
             fingerprint = LinearFingerprint(**config.fingerprint).transform_bitset([self])[0]
+            mol = self
             self = Molecule
         else:
             raise ValueError(" Only CGRtools.MoleculeContainer or CGRdb.Molecule")
         if ordered:
-            request_pack = self._substructure_ordered(fingerprint, no_graph=no_graph)
+            request_pack = self._substructure_ordered(fingerprint, substr=mol)
         else:
-            request_pack = self._substructure_unordered(fingerprint, no_graph=no_graph)
+            request_pack = self._substructure_unordered(fingerprint, substr=mol)
         if request_only:
             return request_pack.request
         return CursorHolder(request_pack, self._database_)
@@ -357,13 +360,19 @@ class MoleculeStructure(Entity):
     def structure(self) -> MoleculeContainer:
         return loads(self._structure)
 
+    def unload(self):
+        self._vals_.pop(MoleculeStructure._structure, None)
+        self._vals_.pop(MoleculeStructure.fingerprint, None)
+        self._vals_.pop(MoleculeStructure.smiles, None)
+        self.__dict__.pop('structure', None)
+
 
 class NonOrganic(Entity):
     id = PrimaryKey(int, auto=True)
-    signature = Required(bytes, unique=True)
-    smiles = Required(str)
-    _structure = Required(bytes)
-    _fast_mapping = Required(IntArray)
+    signature = Required(bytes, unique=True, lazy=True)
+    smiles = Required(str, lazy=True)
+    _structure = Required(bytes, lazy=True)
+    _fast_mapping = Required(IntArray, lazy=True)
     substances = Set('SubstanceStructure')
 
     def __init__(self, mol: Union[bytes, MoleculeContainer], /, *, signature: Optional[bytes] = None,
@@ -402,10 +411,12 @@ class NonOrganic(Entity):
         return RequestPack(request, cls.__postprocess_exact_non_org)
 
     @classmethod
-    def get_by_structure(cls, mol: MoleculeContainer):  # cannot use get not to overwrite pony
-        if not isinstance(mol, MoleculeContainer):
+    def get(cls, mol: MoleculeContainer = None, **kwargs):  # cannot use get not to overwrite pony
+        if mol is None:
+            return type(cls).get(cls, **kwargs)
+        elif not isinstance(mol, MoleculeContainer):
             raise ValueError("CGRtools.MoleculeContainer should be provided")
-        return CursorHolder(cls._exact_match(mol), cls._database_)
+        return cls.get(signature=bytes(mol))
 
     @classmethod
     def _exact_match_in_reactions(cls, mol):

@@ -44,23 +44,28 @@ class Test:
         for i in smi:
             mol = smiles(i)
             for n in self.test_sequences:
-                results["similarity_ordered"].append(self.query_mol(mol, n=n, ordered=True))
-                results["substructure_ordered"].append(self.query_mol(mol, n=n, similarity=False, ordered=True))
-                results["similarity_unordered"].append(self.query_mol(mol, n=n, ordered=False))
-                results["substructure_unordered"].append(self.query_mol(mol, n=n, similarity=False, ordered=False))
+                with db_session:
+                    results["similarity_ordered"].append(self.query_mol(mol, n=n, ordered=True))
+                with db_session:
+                    results["substructure_ordered"].append(self.query_mol(mol, n=n, similarity=False, ordered=True))
+                with db_session:
+                    results["similarity_unordered"].append(self.query_mol(mol, n=n, ordered=False))
+                with db_session:
+                    results["substructure_unordered"].append(self.query_mol(mol, n=n, similarity=False, ordered=False))
                 print(f"{n} sequence finished for {i}")
         return results
 
-    def query_mol(self, mol, n=1, similarity=True, ordered=True, no_graph=True):
+    def query_mol(self, mol, n=1, similarity=True, ordered=True):
         with db_session():
             results_found = 0
             if similarity:
                 start = time()
-                res = Molecule.similars(mol, ordered=ordered, no_graph=no_graph)
+                res = Molecule.similars(mol, ordered=ordered)
             else:
                 start = time()
-                res = Molecule.substructres(mol, ordered=ordered, no_graph=no_graph)
-            for i, _ in enumerate(res, 1):
+                res = Molecule.substructres(mol, ordered=ordered)
+            for i, r in enumerate(res, 1):
+                r[1].unload()
                 results_found += 1
                 if i == n:
                     break

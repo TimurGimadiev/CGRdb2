@@ -12,13 +12,15 @@ from . import molecule
 from . import config
 from .indexes import CursorHolder, RequestPack
 from functools import partial
+#from .cgr import CGRData, CGR
+from StructureFingerprint import LinearFingerprint
 
 
 class Reaction(Entity):
     id = PrimaryKey(int, auto=True)
     substances = Set('ReactionSubstance')
 
-    def __init__(self, reaction: Optional[ReactionContainer] = None, /):
+    def __init__(self, reaction: Optional[ReactionContainer] = None, /, cgr=False):
         super().__init__()
         if reaction is not None:
             if any(x.connected_components_count > 1 for x in reaction.molecules()):
@@ -27,6 +29,9 @@ class Reaction(Entity):
                 ReactionSubstance(substance.Substance(((x, None),)), self, False)
             for x in reaction.products:
                 ReactionSubstance(substance.Substance(((x, None),)), self, True)
+            #if cgr:
+            #    CGR(reaction, reaction=self)
+
 
     @cached_property
     def structure(self):
@@ -82,23 +87,25 @@ class Reaction(Entity):
             return reaction, [molecule.Molecule[x] for x in mols], score
 
     @classmethod
-    def get_by_structure(cls, reaction: ReactionContainer, mapping: bool = False, fix_roles: bool = True,
-                         request_only: bool = False):
+    def get(cls, reaction: ReactionContainer = None, mapping: bool = False, fix_roles: bool = True,
+                         request_only: bool = False, **kwargs):
+        if reaction is None:
+            return type(cls).get(cls, **kwargs)
         if not isinstance(reaction, ReactionContainer):
             raise TypeError("CGRtools.ReactionContainer expected as input")
         reactants = []
         products = []
         for mol in reaction.reactants:
             if validate_molecule(mol):
-                reactants.append(molecule.Molecule.get_reactions_with(mol, request_only=True,
-                                                                      is_product=False if fix_roles else None))
+                reactants.append(molecule.Molecule.reactions(mol, request_only=True,
+                                                             is_product=False if fix_roles else None))
             else:
                 reactants.append(molecule.NonOrganic.get_reactions_with(mol, request_only=True,
                                                                         is_product=False if fix_roles else None))
         for mol in reaction.products:
             if validate_molecule(mol):
-                products.append(molecule.Molecule.get_reactions_with(mol, request_only=True,
-                                                                     is_product=True if fix_roles else None))
+                products.append(molecule.Molecule.reactions(mol, request_only=True,
+                                                            is_product=True if fix_roles else None))
             else:
                 reactants.append(molecule.NonOrganic.get_reactions_with(mol, request_only=True,
                                                                         is_product=True if fix_roles else None))
@@ -111,12 +118,12 @@ class Reaction(Entity):
             return CursorHolder(RequestPack(request, partial(cls.__postprocess_exact_reaction_mapped,
                                                              initial=reaction)), cls._database_)
 
-    def structurally_same(self, mapping=False):
-        return self.get_by_structure(self.structure, mapping)
+    #def structurally_same(self, mapping=False):
+    #    return self.get_by_structure(self.structure, mapping)
 
     @classmethod
-    def similar_to(cls, reaction: ReactionContainer, ordered: bool = True, fix_roles: bool = True,
-                   mapping: bool = False, request_only=False):
+    def similars(cls, reaction: ReactionContainer, ordered: bool = True, fix_roles: bool = True,
+                 mapping: bool = False, request_only=False):
         if not isinstance(reaction, ReactionContainer):
             raise TypeError("CGRtools.ReactionContainer expected as input")
         reactants = []
@@ -163,8 +170,8 @@ class Reaction(Entity):
                                                              initial_cgr=core)), cls._database_)
 
     @classmethod
-    def substructure_to(cls, reaction: ReactionContainer, ordered: bool = True, fix_roles: bool = True,
-                   mapping: bool = False, request_only=False):
+    def substructures(cls, reaction: ReactionContainer, ordered: bool = True, fix_roles: bool = True,
+                      mapping: bool = False, request_only=False):
         if not isinstance(reaction, ReactionContainer):
             raise TypeError("CGRtools.ReactionContainer expected as input")
         reactants = []

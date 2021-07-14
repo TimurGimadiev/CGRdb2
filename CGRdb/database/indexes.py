@@ -84,9 +84,8 @@ class CursorHolder:
 
     def __next__(self):
         while True:
-            db.flush()
-            res = self.cursor.fetchone()
-            if res is not None:
+            res = next(self.buffer)
+            if res:
                 result = self.function(res)
                 if result:
                     return result
