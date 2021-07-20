@@ -17,11 +17,16 @@ from functools import partial
 class CGR(Entity):
     id = PrimaryKey(int, auto=True)
     cgrsmiles = Required(str, lazy=True)
-    signature = Required(bytes, unique=True, lazy=True)
     fingerprint = Required(IntArray, lazy=True)
     fingerprint_len = Required(int)
     _structure = Required(bytes, lazy=True)
-    CGRReaction = set('CGRReaction')
+    reaction = Required('Reaction')
+
+    def __init__(self, structure: ReactionContainer, /, **kwargs):
+        cgr_structure = ~structure
+        fingerprint = LinearFingerprint(**config.fingerprint).transform_bitset([cgr_structure])[0]
+        super().__init__(cgrsmiles=str(cgr_structure), fingerprint=fingerprint,
+                         fingerpint_len=len(fingerprint), _structure=dumps(cgr_structure), **kwargs)
 
     @cached_property
     def structure(self) -> CGRContainer:
@@ -36,30 +41,10 @@ class CGR(Entity):
         return CGR.get(signature=bytes(mol))
 
     def similar(self):
-
         raise NotImplemented
+
+        select(z for z in x.CGRReaction
+               for x in CGR if self.fingerpeint in x.fingerprint)
 
     def substructures(self):
         raise NotImplemented
-
-
-class CGRReaction(Entity):
-    id = PrimaryKey(int, auto=True)
-    reactions = set('Reaction')
-    cgr_data = Required('CGRData')
-
-    @cached_property
-    def structure(self) -> CGRContainer:
-        return self.cgr_data.structure
-
-    def __init__(self, structure: ReactionContainer, /, reaction=None):
-        if reaction:
-            cgr_structure = ~structure
-            try:
-                cgr_data = CGR.get(cgrsmiles=str(cgr_structure))
-            except Exception:
-                fingerprint = LinearFingerprint(**config.fingerprint).transform_bitset([cgr_structure])[0]
-                cgr_data = CGR(cgrsmiles=str(cgr_structure), fingerprint=fingerprint,
-                                   fingerpint_len=len(fingerprint), _structure=dumps(cgr_structure))
-            super().__init__(reactions=reaction, cgr_data=cgr_data)
-

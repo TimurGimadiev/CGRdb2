@@ -12,13 +12,14 @@ from . import molecule
 from . import config
 from .indexes import CursorHolder, RequestPack
 from functools import partial
-#from .cgr import CGRData, CGR
 from StructureFingerprint import LinearFingerprint
+from .cgr import CGR
 
 
 class Reaction(Entity):
     id = PrimaryKey(int, auto=True)
     substances = Set('ReactionSubstance')
+    CGR = PonyOptional("CGR")
 
     def __init__(self, reaction: Optional[ReactionContainer] = None, /, cgr=False):
         super().__init__()
@@ -29,9 +30,8 @@ class Reaction(Entity):
                 ReactionSubstance(substance.Substance(((x, None),)), self, False)
             for x in reaction.products:
                 ReactionSubstance(substance.Substance(((x, None),)), self, True)
-            #if cgr:
-            #    CGR(reaction, reaction=self)
-
+            if cgr:
+                CGR(reaction, reaction=self)
 
     @cached_property
     def structure(self):

@@ -69,6 +69,7 @@ class Molecule(Entity):
             del struct._vals_[MoleculeStructure._structure]
             del struct.__dict__['structure']
 
+
     @classmethod
     def __postprocess_unordered_reaction(cls, result, *, fingerprint=None):
         if not fingerprint:
@@ -180,14 +181,15 @@ class Molecule(Entity):
 # similarity search block
 
     @classmethod
-    def _similarity_unorderd(cls, fingerprint: list, no_graph=False) -> RequestPack:
+    def _similarity_unorderd(cls, fingerprint: list) -> RequestPack:
         request_end = cls.__similarity_filtering(fingerprint)
         request = f"""
             SELECT x.molecule m, x.id
             FROM MoleculeStructure x
             WHERE x.id IN (
             SELECT distinct unnest(records) m FROM moleculesimilarityindex WHERE {request_end})"""
-        return RequestPack(request, partial(cls.__postprocess_unordered_molecules, fingerprint=fingerprint))
+        return RequestPack(request, partial(cls.__postprocess_unordered_molecules, fingerprint=fingerprint),
+                           prefetch_map=(MoleculeStructure, 1, [MoleculeStructure.fingerprint]))
 
     @classmethod
     def _similarity_ordered(cls, fingerprint: list) -> RequestPack:
@@ -200,7 +202,8 @@ class Molecule(Entity):
            SELECT distinct unnest(records) m FROM moleculesimilarityindex WHERE {request_end})
            ORDER BY t DESC
            '''
-        return RequestPack(request, cls.__postprocess_ordered_molecules)
+        return RequestPack(request, cls.__postprocess_ordered_molecules,
+                           prefetch_map=(MoleculeStructure, 1, None))
 
     def similars(self: Union[MoleculeContainer, "Molecule"], ordered=True, request_only=False):
         if isinstance(self, Molecule):
@@ -258,7 +261,8 @@ class Molecule(Entity):
         FROM table_2 h JOIN MoleculeStructure s ON h.s = s.id
         ORDER BY h.t DESC
         '''
-        return RequestPack(request, partial(cls.__postprocess_ordered_molecules, substr=substr))
+        return RequestPack(request, partial(cls.__postprocess_ordered_molecules, substr=substr),
+                           prefetch_map=(MoleculeStructure, 1, [MoleculeStructure._structure]))
 
     @classmethod
     def _substructure_unordered(cls, fingerprint: list, substr=None):
@@ -269,7 +273,8 @@ class Molecule(Entity):
         FROM table_1 h JOIN MoleculeStructure s ON h.s = s.id
         '''
         return RequestPack(request, partial(cls.__postprocess_unordered_molecules,
-                                            fingerprint=fingerprint, substr=substr))
+                                            fingerprint=fingerprint, substr=substr),
+                           prefetch_map=(MoleculeStructure, 1, [MoleculeStructure.fingerprint, MoleculeStructure._structure]))
 
     def substructres(self: Union[MoleculeContainer, "Molecule"], ordered=True, request_only=False):
         if isinstance(self, Molecule):

@@ -3,7 +3,7 @@ from types import MethodType
 
 from datasketch import MinHash
 from datasketch.lsh import _optimal_param
-from pony.orm import Required, PrimaryKey, IntArray, db_session
+from pony.orm import Required, PrimaryKey, IntArray, db_session, select
 from tqdm import tqdm
 
 from . import config, db
@@ -12,7 +12,7 @@ from ..utils import MinHashLSH
 from uuid import uuid4
 from collections import namedtuple
 
-RequestPack = namedtuple('RequestPack', ['request', 'postprocess'])
+RequestPack = namedtuple('RequestPack', ['request', 'postprocess', 'prefetch_map'])
 
 
 class MoleculeSimilarityIndex(Entity):
@@ -84,13 +84,8 @@ class CursorHolder:
 
     def __next__(self):
         while True:
-            res = next(self.buffer)
-            if res:
-                result = self.function(res)
-                if result:
-                    return result
-            else:
-                raise StopIteration("No more suitable objects")
+            if result := self.function(next(self.buffer)):
+                return result
 
     def __del__(self):
         try:
