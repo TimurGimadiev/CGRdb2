@@ -113,10 +113,10 @@ class Reaction(Entity):
         if request_only:
             return request
         if not mapping:
-            return CursorHolder(RequestPack(request, cls.__postprocess_exact_reaction), cls._database_)
+            return CursorHolder(RequestPack(request, cls.__postprocess_exact_reaction))
         else:
             return CursorHolder(RequestPack(request, partial(cls.__postprocess_exact_reaction_mapped,
-                                                             initial=reaction)), cls._database_)
+                                                             initial=reaction)))
 
     #def structurally_same(self, mapping=False):
     #    return self.get_by_structure(self.structure, mapping)
@@ -162,12 +162,12 @@ class Reaction(Entity):
         if request_only:
             return request
         if not mapping:
-            return CursorHolder(RequestPack(request, cls.__postprocess_list_reactions), cls._database_)
+            return CursorHolder(RequestPack(request, cls.__postprocess_list_reactions))
         else:
             cgr = ~reaction
             core = cgr.substructure(cgr.center_atoms)
             return CursorHolder(RequestPack(request, partial(cls.__postprocess_list_reactions_mapped,
-                                                             initial_cgr=core)), cls._database_)
+                                                             initial_cgr=core)))
 
     @classmethod
     def substructures(cls, reaction: ReactionContainer, ordered: bool = True, fix_roles: bool = True,
@@ -211,12 +211,12 @@ class Reaction(Entity):
         if request_only:
             return request
         if not mapping:
-            return CursorHolder(RequestPack(request, cls.__postprocess_list_reactions), cls._database_)
+            return CursorHolder(RequestPack(request, cls.__postprocess_list_reactions))
         else:
             cgr = ~reaction
             core = cgr.substructure(cgr.center_atoms)
             return CursorHolder(RequestPack(request, partial(cls.__postprocess_list_reactions_mapped,
-                                                             initial_cgr=core)), cls._database_)
+                                                             initial_cgr=core)))
 
     def substructure_mappless(self):
         raise NotImplemented
