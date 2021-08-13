@@ -93,12 +93,12 @@ class Molecule(Entity):
 
     @classmethod
     def __role_filter(cls, request_pack: RequestPack, is_product: bool):  # True for products, False - reactants as in DB
-        request, postprocess = request_pack
+        request, postprocess, prefetch_map = request_pack
         if is_product:
             request += ' WHERE r.is_product = TRUE'
         else:
             request += ' WHERE r.is_product = FALSE'
-        return RequestPack(request, postprocess)
+        return RequestPack(request, postprocess, prefetch_map)
 
     @classmethod
     def __reactions_from_unordered(cls, request_core: str, *, fingerprint=None):
@@ -107,9 +107,11 @@ class Molecule(Entity):
                 molecules as ({request_core}),
                 substances as (SELECT s.substance, molecules.m
                     FROM substancestructure s JOIN molecules ON s.molecule = molecules.m)
-                SELECT r.reaction as reaction_id, r_s.m as molecule_id FROM reactionsubstance r JOIN substances r_s 
+                SELECT DISTINCT r.reaction as reaction_id, r_s.m as molecule_id FROM reactionsubstance r JOIN substances r_s 
                 ON r.substance = r_s.substance'''
-        return RequestPack(request, partial(cls.__postprocess_unordered_reaction, fingerprint=fingerprint))
+        return RequestPack(request, partial(cls.__postprocess_unordered_reaction, fingerprint=fingerprint),
+                           prefetch_map=(reaction.Reaction, 0,
+                                         [reaction.Reaction.structure, reaction.Reaction.fingerprint]))
 
     @classmethod
     def __reactions_from_ordered(cls, request_core: str):
@@ -118,9 +120,10 @@ class Molecule(Entity):
                     molecules as ({request_core}),
                     substances as (SELECT s.substance, molecules.m, molecules.t
                     FROM substancestructure s JOIN molecules ON s.molecule = molecules.m)
-                    SELECT r.reaction as reaction_id, r_s.m as molecule_id, r_s.t as tanimoto
+                    SELECT DISTINCT r.reaction as reaction_id, r_s.m as molecule_id, r_s.t as tanimoto
                     FROM reactionsubstance r JOIN substances r_s ON r.substance = r_s.substance'''
-        return RequestPack(request, cls.__postprocess_ordered_reaction)
+        return RequestPack(request, cls.__postprocess_ordered_reaction,
+                           prefetch_map=(reaction.Reaction, 0, None))
 
 #   exact search block
 
@@ -149,10 +152,10 @@ class Molecule(Entity):
                         FROM substancestructure s JOIN molecules ON s.molecule = molecules.molecule)
                         SELECT r.reaction as reaction_id
                         FROM reactionsubstance r JOIN substances r_s ON r.substance = r_s.substance'''
-        return RequestPack(request, cls.__postprocess_exact_reactions)
+        return RequestPack(request, cls.__postprocess_exact_reactions, prefetch_map=(None, None, None))
 
     @classmethod
-    def reactions(cls, mol: MoleculeContainer, is_product: Optional[bool] = None, request_only=False):
+    def reactions(cls, mol: MoleculeContainer, is_product: Optional[bool] = None, request_only=False):  # Fix this
         if not isinstance(mol, MoleculeContainer):
             raise ValueError("CGRtools.MoleculeContainer should be provided")
         request_pack = cls._exact_match_in_reactions(mol)
@@ -165,12 +168,12 @@ class Molecule(Entity):
             return request_pack.request
         return CursorHolder(request_pack, cls._database_)
 
-    def in_reactions(self, is_product: Optional[bool] = None):
+    def in_reactions(self, is_product: Optional[bool] = None):  # fix this combine with reactions classmethod
         request_pack = RequestPack(request=f'''WITH substances as (SELECT s.substance
                             FROM substancestructure s WHERE s.molecule={self.id})
                             SELECT r.reaction as reaction_id
                             FROM reactionsubstance r JOIN substances r_s ON r.substance = r_s.substance''',
-                                   postprocess=self.__postprocess_exact_reactions)
+                                   postprocess=self.__postprocess_exact_reactions, prefetch_map=(None, None, None))
         if is_product is not None:
             if isinstance(is_product, bool):
                 request_pack = self.__role_filter(request_pack, is_product)
@@ -233,10 +236,10 @@ class Molecule(Entity):
         if ordered:
             request_pack = self.__reactions_from_ordered(request_core=request)
         else:
-            request_pack = self.__reactions_from_ordered(request_core=request)
+            request_pack = self.__reactions_from_unordered(request_core=request)
         if is_product is not None:
             if isinstance(is_product, bool):
-                self.__role_filter(request_pack, is_product)
+                request_pack = self.__role_filter(request_pack, is_product)
             else:
                 raise ValueError("is_product can be boolean (True for product, False for reactant) or None")
         if request_only:
@@ -310,7 +313,7 @@ class Molecule(Entity):
             request_pack = self.__reactions_from_unordered(request_core=request)
         if is_product is not None:
             if isinstance(is_product, bool):
-                self.__role_filter(request_pack, is_product)
+                request_pack = self.__role_filter(request_pack, is_product)
             else:
                 raise ValueError("is_product can be boolean (True for product, False for reactant) or None")
         if request_only:
@@ -357,13 +360,13 @@ class MoleculeStructure(Entity):
                 signature = bytes(mol)
             if fingerprint is None:
                 fingerprint = LinearFingerprint(**config.fingerprint).transform_bitset([mol])[0]
-            mol = dumps(mol)
+            mol = mol.pack()
         super().__init__(_structure=mol, fingerprint=fingerprint, fingerprint_len=len(fingerprint), molecule=molecule,
                          signature=signature, is_canonic=is_canonic, smiles=smiles, _fast_mapping=fast_mapping)
 
     @cached_property
     def structure(self) -> MoleculeContainer:
-        return loads(self._structure)
+        return MoleculeContainer.unpack(self._structure)
 
     def unload(self):
         self._vals_.pop(MoleculeStructure._structure, None)

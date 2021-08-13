@@ -21,6 +21,7 @@ from .molecule import *
 from .reaction import *
 from .substance import *
 from .indexes import *
+from .cgr import *
 
 
 __all__ = ['db', 'Reaction', 'Config']

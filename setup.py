@@ -34,7 +34,7 @@ setup(
     author=['Dr. Timur Gimadiev', 'Dr. Ramil Nugmanov'],
     author_email=['timur.gimadiev@gmail.com', 'nougmanoff@protonmail.com'],
     python_requires='>=3.9.0',
-    install_requires=['CGRtools==4.1.26',  'StructureFingerprint>=1.24',
+    install_requires=['CGRtools>4.1.20,<4.2',  'StructureFingerprint>=1.24',
                       'pony>=0.7.14,<0.8', 'psycopg2-binary>=2.8.6', 'tqdm>=4.61.0',
                       'datasketch>=1.5.3'],
     extras_require={'autocomplete': ['argcomplete'],

@@ -22,10 +22,23 @@ class MoleculeSimilarityIndex(Entity):
     PrimaryKey(band, key)
 
 
+class CGRSimilarityIndex(Entity):
+    band = Required(int)
+    key = Required(int, size=64)
+    records = Required(IntArray)
+    PrimaryKey(band, key)
+
+
 def fingerprintidx_create(self):
     print("creation of index for fingerprints")
+    self.execute("DROP INDEX if exists idx_moleculestructure;")
     self.execute("CREATE INDEX idx_moleculestructure ON MoleculeStructure USING GIST(fingerprint gist__intbig_ops);")
+    self.execute("DROP INDEX if exists idx_cgrfingerprint;")
+    self.execute("CREATE INDEX idx_cgrfingerprint ON cgr USING GIST(fingerprint gist__intbig_ops);")
     print("creation of index for fingerprint length")
+    self.execute("DROP INDEX if exists idx_cgr_fingerprint_len;")
+    self.execute("CREATE INDEX idx_cgr_fingerprint_len ON cgr(fingerprint_len);")
+    self.execute("DROP INDEX if exists idx_fingerprint_len;")
     self.execute("CREATE INDEX idx_fingerprint_len ON moleculestructure(fingerprint_len);")
 
 def molecule_similatiryidx_create(self):
@@ -51,17 +64,27 @@ def molecule_similatiryidx_create(self):
             self.commit()
 
 
-def reaction_similatiryidx_create(self):
-    raise NotImplementedError
-
-    num_permute = config.lsh_num_permute or 64
-    threshold = config.lsh_threshold or 0.7
-    self.execute(f"""DELETE FROM MoleculeSimilarityIndex WHERE 1=1""")
-    self.commit()
+def cgr_similatiryidx_create(self):
+    num_permute = config.cgr_lsh_num_permute or 64
+    threshold = config.cgr_lsh_threshold or 0.7
     lsh = MinHashLSH(threshold=threshold, num_perm=num_permute, hashfunc=hash)
     b, r = _optimal_param(threshold, num_permute, 0.5, 0.5)
     hashranges = [(i * r, (i + 1) * r) for i in range(b)]
-    pass
+    with db_session:
+        self.execute(f"""DELETE FROM CGRSimilarityIndex WHERE 1=1""")
+        self.execute(f"""DELETE FROM Config c WHERE c.key='cgr_hashranges' """)
+        self.commit()
+        Config(key="cgr_hashranges", value=json.dumps(hashranges))
+        print("Creation of LSH for CGR")
+        for idx, fingerprint in tqdm(self.execute(f'SELECT id, fingerprint FROM cgr')):
+            h = MinHash(num_perm=num_permute, hashfunc=hash)
+            h.update_batch(fingerprint)
+            lsh.insert(idx, h, check_duplication=False)
+        print("Uploading CGR LSH tables into DB")
+        for n, ht in tqdm(enumerate(lsh.hashtables, 1)):
+            for key, value in ht._dict.items():
+                self.insert(CGRSimilarityIndex, band=n, key=key, records=list(value))
+            self.commit()
 
 
 class CursorHolder:

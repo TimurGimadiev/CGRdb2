@@ -17,11 +17,14 @@ class Substance(Entity):
     components = Set('SubstanceStructure')
     name = PonyOptional(str)
 
-    def __init__(self, substance: Optional[Iterable[Tuple[MoleculeContainer, Optional[float]]]] = None, /):
+    def __init__(self, substance: Optional[Iterable[Tuple[MoleculeContainer, Optional[float]]]] = None, /, name=None):
         """
         :param substance:
         """
-        super().__init__()
+        if name:
+            super().__init__(name=name)
+        else:
+            super().__init__()
         if substance is not None:
             if not isinstance(substance, abcIterable):
                 raise ValueError("Iterable type consisted of tuples should be provided")

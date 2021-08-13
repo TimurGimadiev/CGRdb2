@@ -21,7 +21,7 @@ class Reaction(Entity):
     substances = Set('ReactionSubstance')
     CGR = PonyOptional("CGR")
 
-    def __init__(self, reaction: Optional[ReactionContainer] = None, /, cgr=False):
+    def __init__(self, reaction: Optional[ReactionContainer] = None, /, keep_cgr=False):
         super().__init__()
         if reaction is not None:
             if any(x.connected_components_count > 1 for x in reaction.molecules()):
@@ -113,10 +113,13 @@ class Reaction(Entity):
         if request_only:
             return request
         if not mapping:
-            return CursorHolder(RequestPack(request, cls.__postprocess_exact_reaction))
+            return CursorHolder(
+                RequestPack(request, cls.__postprocess_exact_reaction,
+                            prefetch_map=(Reaction, 0, [Reaction.structure])))
         else:
-            return CursorHolder(RequestPack(request, partial(cls.__postprocess_exact_reaction_mapped,
-                                                             initial=reaction)))
+            return CursorHolder(
+                RequestPack(request, partial(cls.__postprocess_exact_reaction_mapped,
+                                             initial=reaction), prefetch_map=()))
 
     #def structurally_same(self, mapping=False):
     #    return self.get_by_structure(self.structure, mapping)
@@ -131,14 +134,14 @@ class Reaction(Entity):
             if validate_molecule(mol):
                 reactants.append(
                     molecule.Molecule.similars_in_reactions(mol, ordered=ordered,
-                                                            is_product=True if fix_roles else None,
+                                                            is_product=False if fix_roles else None,
                                                             request_only=True))
         products = []
         for mol in reaction.products:
             if validate_molecule(mol):
                 products.append(
                     molecule.Molecule.similars_in_reactions(mol, ordered=ordered,
-                                                            is_product=False if fix_roles else None,
+                                                            is_product=True if fix_roles else None,
                                                             request_only=True))
         if not reactants and not products:
             raise ValueError("This reaction consist only from molecules with Non_organic atoms or ions,"
@@ -162,12 +165,14 @@ class Reaction(Entity):
         if request_only:
             return request
         if not mapping:
-            return CursorHolder(RequestPack(request, cls.__postprocess_list_reactions))
+            return CursorHolder(RequestPack(request, cls.__postprocess_list_reactions,
+                                            prefetch_map=(None, None, None)))
         else:
             cgr = ~reaction
             core = cgr.substructure(cgr.center_atoms)
-            return CursorHolder(RequestPack(request, partial(cls.__postprocess_list_reactions_mapped,
-                                                             initial_cgr=core)))
+            return CursorHolder(
+                RequestPack(request, partial(cls.__postprocess_list_reactions_mapped,
+                                             initial_cgr=core), prefetch_map=(None, None, None)))
 
     @classmethod
     def substructures(cls, reaction: ReactionContainer, ordered: bool = True, fix_roles: bool = True,
@@ -180,7 +185,7 @@ class Reaction(Entity):
                 reactants.append(
                     molecule.Molecule.substructures_in_reactions(mol,
                                                                  ordered=ordered,
-                                                                 is_product=True if fix_roles else None,
+                                                                 is_product=False if fix_roles else None,
                                                                  request_only=True))
         products = []
         for mol in reaction.products:
@@ -188,7 +193,7 @@ class Reaction(Entity):
                 products.append(
                     molecule.Molecule.substructures_in_reactions(mol,
                                                                  ordered=ordered,
-                                                                 is_product=False if fix_roles else None,
+                                                                 is_product=True if fix_roles else None,
                                                                  request_only=True))
         if not reactants and not products:
             raise ValueError("This reaction consist only from molecules with Non_organic atoms or ions,"
@@ -211,12 +216,14 @@ class Reaction(Entity):
         if request_only:
             return request
         if not mapping:
-            return CursorHolder(RequestPack(request, cls.__postprocess_list_reactions))
+            return CursorHolder(RequestPack(request, cls.__postprocess_list_reactions,
+                                            prefetch_map=(None, None, None)))
         else:
             cgr = ~reaction
             core = cgr.substructure(cgr.center_atoms)
-            return CursorHolder(RequestPack(request, partial(cls.__postprocess_list_reactions_mapped,
-                                                             initial_cgr=core)))
+            return CursorHolder(RequestPack(request,
+                                            partial(cls.__postprocess_list_reactions_mapped,
+                                                    initial_cgr=core), prefetch_map=(None, None, None)))
 
     def substructure_mappless(self):
         raise NotImplemented
