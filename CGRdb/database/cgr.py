@@ -42,12 +42,22 @@ class CGR(Entity):
         self.__dict__.pop('structure', None)
 
     @staticmethod
-    def get(cls, mol: Optional[CGRContainer] = None, **kwargs):  # fix this
-        if mol is None:
+    def __postprocess_exact_match(result):
+        return CGR[result]
+
+    @classmethod
+    def get(cls, cgr: Optional[CGRContainer] = None, **kwargs):  # fix this
+        if cgr is None:
             return type(cls).get(cls, **kwargs)
-        elif not isinstance(mol, CGRContainer):
+        elif not isinstance(cgr, CGRContainer):
             raise ValueError("CGRtools.CGRContainer should be provided")
-        return CGR.get(signature=bytes(mol))
+        request = f"""
+                    SELECT x.id
+                    FROM cgr x
+                    WHERE x.cgrsmiles = '{str(cgr)}'"""
+        request_pack = RequestPack(request, cls.__postprocess_exact_match,
+                           prefetch_map=(None, None, None))
+        return CursorHolder(request_pack)
 
     @staticmethod
     def __postprocess_unordered_cgrs(result, *, fingerprint=None, substr=None):
@@ -59,7 +69,7 @@ class CGR(Entity):
         if substr is None:
             return cgr, tanimoto
         else:
-            if substr < cgr.structure:
+            if substr <= cgr.structure:
                 return cgr, tanimoto
             # clean cache for memory keeping
             del cgr._vals_[CGR._structure]
@@ -72,7 +82,7 @@ class CGR(Entity):
         if substr is None:
             return cgr, tanimoto
         else:
-            if substr < cgr.structure:
+            if substr <= cgr.structure:
                 return cgr, tanimoto
             # clean cache for memory keeping
             del cgr._vals_[CGR._structure]

@@ -63,7 +63,7 @@ class Molecule(Entity):
         if substr is None:
             return mol, struct, tanimoto
         else:
-            if substr < struct.structure:
+            if substr <= struct.structure:
                 return mol, struct, tanimoto
             # clean cache for memory keeping
             del struct._vals_[MoleculeStructure._structure]

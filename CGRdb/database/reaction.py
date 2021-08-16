@@ -83,7 +83,7 @@ class Reaction(Entity):
         reaction, mols, score = result
         reaction = Reaction[reaction]
         cgr = ~reaction.structure
-        if (cgr) > initial_cgr:
+        if (cgr) >= initial_cgr:
             return reaction, [molecule.Molecule[x] for x in mols], score
 
     @classmethod
