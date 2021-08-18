@@ -63,9 +63,9 @@ class Test:
         results = defaultdict(list)
         if smi is None:
             if cgr:
-                smi = cgr_queries.items()
+                smi = cgr_queries.values()
             else:
-                smi = mol_queries.items()
+                smi = mol_queries.values()
         if cgr:
             query = self.query_cgr
         else:

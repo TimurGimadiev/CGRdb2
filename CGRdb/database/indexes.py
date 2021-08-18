@@ -108,6 +108,8 @@ class CursorHolder:
     def __next__(self):
         while True:
             if result := self.function(next(self.buffer)):
+                if result == "stop":
+                    raise StopIteration("Similarity limit reached")
                 return result
 
     def __del__(self):

@@ -56,12 +56,15 @@ class Molecule(Entity):
         return mol, struct, tanimoto
 
     @staticmethod
-    def __postprocess_ordered_molecules(result, substr=None):
+    def __postprocess_ordered_molecules(result, substr=None,tanimoto_limit=None):
         mol = Molecule[result[0]]
         struct = MoleculeStructure[result[1]]
         tanimoto = result[2]
         if substr is None:
-            return mol, struct, tanimoto
+            if tanimoto > tanimoto_limit:
+                return mol, struct, tanimoto
+            else:
+                return "stop"
         else:
             if substr <= struct.structure:
                 return mol, struct, tanimoto
@@ -184,18 +187,19 @@ class Molecule(Entity):
 # similarity search block
 
     @classmethod
-    def _similarity_unorderd(cls, fingerprint: list) -> RequestPack:
+    def _similarity_unorderd(cls, fingerprint: list, tanimoto_limit=None) -> RequestPack:
         request_end = cls.__similarity_filtering(fingerprint)
         request = f"""
             SELECT x.molecule m, x.id
             FROM MoleculeStructure x
             WHERE x.id IN (
             SELECT distinct unnest(records) m FROM moleculesimilarityindex WHERE {request_end})"""
-        return RequestPack(request, partial(cls.__postprocess_unordered_molecules, fingerprint=fingerprint),
+        return RequestPack(request, partial(cls.__postprocess_unordered_molecules, fingerprint=fingerprint,
+                                            tanimoto_limit=tanimoto_limit),
                            prefetch_map=(MoleculeStructure, 1, [MoleculeStructure.fingerprint]))
 
     @classmethod
-    def _similarity_ordered(cls, fingerprint: list) -> RequestPack:
+    def _similarity_ordered(cls, fingerprint: list, tanimoto_limit=None) -> RequestPack:
         request_end = cls.__similarity_filtering(fingerprint)
         request = f'''
            SELECT x.molecule m, x.id, icount(x.fingerprint & '{set(fingerprint)}') / icount(x.fingerprint |
@@ -205,10 +209,13 @@ class Molecule(Entity):
            SELECT distinct unnest(records) m FROM moleculesimilarityindex WHERE {request_end})
            ORDER BY t DESC
            '''
-        return RequestPack(request, cls.__postprocess_ordered_molecules,
+        return RequestPack(request, partial(cls.__postprocess_ordered_molecules, tanimoto_limit=tanimoto_limit),
                            prefetch_map=(MoleculeStructure, 1, None))
 
-    def similars(self: Union[MoleculeContainer, "Molecule"], ordered=True, request_only=False):
+    def similars(self: Union[MoleculeContainer, "Molecule"], ordered=True, request_only=False,
+                 tanimoto_limit=None):
+        if tanimoto_limit is None:
+            tanimoto_limit = config.lsh_threshold
         if isinstance(self, Molecule):
             fingerprint = self.canonic_structure.fingerprint
         elif isinstance(self, MoleculeContainer):
@@ -217,9 +224,9 @@ class Molecule(Entity):
         else:
             raise ValueError(" Only CGRtools.MoleculeContainer or CGRdb.Molecule")
         if ordered:
-            request_pack = self._similarity_ordered(fingerprint)
+            request_pack = self._similarity_ordered(fingerprint, tanimoto_limit=tanimoto_limit)
         else:
-            request_pack = self._similarity_unorderd(fingerprint)
+            request_pack = self._similarity_unorderd(fingerprint, tanimoto_limit=tanimoto_limit)
         if request_only:
             return request_pack.request
         return CursorHolder(request_pack, self._database_)
@@ -250,13 +257,17 @@ class Molecule(Entity):
 # substructure search block
 
     @classmethod
-    def _substructure_ordered(cls, fingerprint: list, substr=None) -> RequestPack:
+    def _substructure_ordered(cls, fingerprint: list, substr=None, prefilter: bool = True) -> RequestPack:
         len_fp = len(fingerprint)
+        if prefilter:
+            prefilter = f"""WHERE a.fingerprint_len BETWEEN {len_fp} AND 
+        {int(len_fp // 0.1)+5} AND"""
+        else:
+            prefilter = "WHERE"
         request = f'''
         WITH table_1 AS (SELECT a.molecule, a.fingerprint, a.id, a.fingerprint_len 
         FROM MoleculeStructure a
-        WHERE a.fingerprint_len BETWEEN {len_fp} AND 
-        {int(len_fp // 0.1)+5} AND a.fingerprint @> '{set(fingerprint)}'),
+        {prefilter} a.fingerprint @> '{set(fingerprint)}'),
         table_2 AS (SELECT DISTINCT ON (table_1.molecule)  table_1.molecule m, table_1.id s,
         {len_fp} / table_1.fingerprint_len::float t
         FROM table_1)
