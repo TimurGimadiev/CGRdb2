@@ -2,6 +2,7 @@ from functools import cached_property
 from typing import Optional, Union, List, Dict, Tuple
 
 from CGRtools.containers import ReactionContainer
+from CGRtools.exceptions import MappingError
 from pony.orm import PrimaryKey, Required, Optional as PonyOptional, Set, Json
 
 from .config import Entity
@@ -20,10 +21,16 @@ class Reaction(Entity):
     id = PrimaryKey(int, auto=True)
     substances = Set('ReactionSubstance')
     CGR = PonyOptional("CGR")
+    reaction_center = PonyOptional(str, lazy=True)
 
     def __init__(self, reaction: Optional[ReactionContainer] = None, /, keep_cgr=False):
-        super().__init__()
         if reaction is not None:
+            try:
+                reaction_cgr = ~reaction
+                rc = reaction_cgr.substructure(reaction_cgr.center_atoms)
+                super().__init__(reaction_center=str(rc))
+            except MappingError:
+                super().__init__()
             if any(x.connected_components_count > 1 for x in reaction.molecules()):
                 raise ValueError('Each CGRtools.MoleculeContainer should contain only one sole graph(molecule)')
             for x in reaction.reactants:
@@ -81,9 +88,8 @@ class Reaction(Entity):
         if not initial_cgr:
             raise ValueError("Initial CGR of reaction core is not provided")
         reaction, mols, score = result
-        reaction = Reaction[reaction]
-        cgr = ~reaction.structure
-        if (cgr) >= initial_cgr:
+        reaction_center = Reaction[reaction].reaction_center
+        if reaction_center == initial_cgr:
             return reaction, [molecule.Molecule[x] for x in mols], score
 
     @classmethod
@@ -172,8 +178,8 @@ class Reaction(Entity):
             return CursorHolder(RequestPack(request, self.__postprocess_list_reactions,
                                             prefetch_map=(None, None, None)))
         else:
-            cgr = ~reaction
-            core = cgr.substructure(cgr.center_atoms)
+            reaction_cgr = ~reaction
+            core = str(reaction_cgr.substructure(reaction_cgr.center_atoms))
             return CursorHolder(
                 RequestPack(request, partial(self.__postprocess_list_reactions_mapped,
                                              initial_cgr=core), prefetch_map=(None, None, None)))
@@ -227,8 +233,8 @@ class Reaction(Entity):
             return CursorHolder(RequestPack(request, self.__postprocess_list_reactions,
                                             prefetch_map=(None, None, None)))
         else:
-            cgr = ~reaction
-            core = cgr.substructure(cgr.center_atoms)
+            reaction_cgr = ~reaction
+            core = str(reaction_cgr.substructure(reaction_cgr.center_atoms))
             return CursorHolder(RequestPack(request,
                                             partial(self.__postprocess_list_reactions_mapped,
                                                     initial_cgr=core), prefetch_map=(None, None, None)))

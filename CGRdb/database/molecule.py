@@ -56,7 +56,7 @@ class Molecule(Entity):
         return mol, struct, tanimoto
 
     @staticmethod
-    def __postprocess_ordered_molecules(result, substr=None,tanimoto_limit=None):
+    def __postprocess_ordered_molecules(result, substr=None, tanimoto_limit=None):
         mol = Molecule[result[0]]
         struct = MoleculeStructure[result[1]]
         tanimoto = result[2]
