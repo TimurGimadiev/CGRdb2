@@ -19,6 +19,6 @@ documentation in progress.
 All data required for examples are in dataset folder.
 
 ### Reproducibility of results from paper
-Results can be reproduced with Test class from CGRdb.tests
-It contain two methods Test.test_reactions() and Test.test_mols(),
+Results can be reproduced with Test class from CGRdb.tests.
+It contains two methods Test.test_reactions() and Test.test_mols(),
 for testing CGR results use Test.test_mols(cgr=True)
