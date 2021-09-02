@@ -1,3 +1,22 @@
+# -*- coding: utf-8 -*-
+#
+#  Copyright 2021 Timur Gimadiev <timur.gimadiev@gmail.com>
+#  Copyright 2021 Ramil Nugmanov <nougmanoff@protonmail.com>
+#  This file is part of CGRdb.
+#
+#  CGRdb is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU Lesser General Public License as published by
+#  the Free Software Foundation; either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+#  GNU Lesser General Public License for more details.
+#
+#  You should have received a copy of the GNU Lesser General Public License
+#  along with this program; if not, see <https://www.gnu.org/licenses/>.
+#
 from functools import cached_property
 from typing import Optional, Union, List, Dict, Tuple
 
@@ -7,10 +26,8 @@ from pony.orm import PrimaryKey, Required, Optional as PonyOptional, Set, Json
 
 from .config import Entity
 from . import substance
-from StructureFingerprint import LinearFingerprint
 from ..utils import validate_molecule
 from . import molecule
-from . import config
 from .indexes import CursorHolder, RequestPack
 from functools import partial
 from StructureFingerprint import LinearFingerprint
@@ -57,7 +74,7 @@ class Reaction(Entity):
         return self.calculate_fingerprint(self.structure)
 
     @classmethod
-    def calculate_fingerprint(cls, reaction: ReactionContainer):
+    def calculate_rc_fingerprint(cls, reaction: ReactionContainer):
         if isinstance(ReactionContainer):
             cgr = ~reaction
             rc = cgr.substructure(cgr.center_atoms)
@@ -90,7 +107,7 @@ class Reaction(Entity):
         reaction, mols, score = result
         reaction_center = Reaction[reaction].reaction_center
         if reaction_center == initial_cgr:
-            return reaction, [molecule.Molecule[x] for x in mols], score
+            return Reaction[reaction], [molecule.Molecule[x] for x in mols], score
 
     @classmethod
     def get(cls, reaction: ReactionContainer = None, mapping: bool = False, fix_roles: bool = True,

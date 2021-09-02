@@ -1,18 +1,36 @@
+# -*- coding: utf-8 -*-
+#
+#  Copyright 2021 Timur Gimadiev <timur.gimadiev@gmail.com>
+#  Copyright 2021 Ramil Nugmanov <nougmanoff@protonmail.com>
+#  This file is part of CGRdb.
+#
+#  CGRdb is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU Lesser General Public License as published by
+#  the Free Software Foundation; either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+#  GNU Lesser General Public License for more details.
+#
+#  You should have received a copy of the GNU Lesser General Public License
+#  along with this program; if not, see <https://www.gnu.org/licenses/>.
+#
+from .config import Entity
+from . import config
+from . import reaction
+from .indexes import CursorHolder, RequestPack
+
 from functools import cached_property
 from pickle import dumps, loads
 from typing import Union, Optional, List
-
 from CGRtools.containers import MoleculeContainer
 from StructureFingerprint import LinearFingerprint
 from pony.orm import PrimaryKey, Required, Set, IntArray
 from datasketch import MinHash
-from .indexes import CursorHolder, RequestPack
-from . import reaction
 from functools import partial
-
 import json
-from . import config
-from .config import Entity, db
 
 
 class Molecule(Entity):
@@ -187,7 +205,7 @@ class Molecule(Entity):
 # similarity search block
 
     @classmethod
-    def _similarity_unorderd(cls, fingerprint: list, tanimoto_limit=None) -> RequestPack:
+    def _similarity_unorderd(cls, fingerprint: list, tanimoto_limit: Optional[float]) -> RequestPack:
         request_end = cls.__similarity_filtering(fingerprint)
         request = f"""
             SELECT x.molecule m, x.id
@@ -199,7 +217,7 @@ class Molecule(Entity):
                            prefetch_map=(MoleculeStructure, 1, [MoleculeStructure.fingerprint]))
 
     @classmethod
-    def _similarity_ordered(cls, fingerprint: list, tanimoto_limit=None) -> RequestPack:
+    def _similarity_ordered(cls, fingerprint: list, tanimoto_limit: Optional[float]) -> RequestPack:
         request_end = cls.__similarity_filtering(fingerprint)
         request = f'''
            SELECT x.molecule m, x.id, icount(x.fingerprint & '{set(fingerprint)}') / icount(x.fingerprint |
@@ -213,9 +231,11 @@ class Molecule(Entity):
                            prefetch_map=(MoleculeStructure, 1, None))
 
     def similars(self: Union[MoleculeContainer, "Molecule"], ordered=True, request_only=False,
-                 tanimoto_limit=None):
+                 tanimoto_limit: Optional[float] = None):
         if tanimoto_limit is None:
             tanimoto_limit = config.lsh_threshold
+        elif not isinstance(tanimoto_limit, float) or 1. < tanimoto_limit < 0.:
+            raise f"tanimoto_limit can be float from 0 to 1, but {tanimoto_limit, type(tanimoto_limit)} was given"
         if isinstance(self, Molecule):
             fingerprint = self.canonic_structure.fingerprint
         elif isinstance(self, MoleculeContainer):
@@ -257,7 +277,8 @@ class Molecule(Entity):
 # substructure search block
 
     @classmethod
-    def _substructure_ordered(cls, fingerprint: list, substr=None, prefilter: bool = True) -> RequestPack:
+    def _substructure_ordered(cls, fingerprint: list, substr=None, prefilter: bool = True,
+                              tanimoto_limit: Optional[float] = None) -> RequestPack:
         len_fp = len(fingerprint)
         if prefilter:
             prefilter = f"""WHERE a.fingerprint_len BETWEEN {len_fp} AND 
@@ -275,11 +296,12 @@ class Molecule(Entity):
         FROM table_2 h JOIN MoleculeStructure s ON h.s = s.id
         ORDER BY h.t DESC
         '''
-        return RequestPack(request, partial(cls.__postprocess_ordered_molecules, substr=substr),
+        return RequestPack(request, partial(cls.__postprocess_ordered_molecules, substr=substr,
+                                            tanimoto_limit=tanimoto_limit),
                            prefetch_map=(MoleculeStructure, 1, [MoleculeStructure._structure]))
 
     @classmethod
-    def _substructure_unordered(cls, fingerprint: list, substr=None):
+    def _substructure_unordered(cls, fingerprint: list, substr=None, tanimoto_limit: Optional[float] = None):
         request = f'''
         WITH table_1 AS (SELECT a.molecule m, a.id s FROM MoleculeStructure a
         WHERE a.fingerprint @> '{set(fingerprint)}')
@@ -287,10 +309,21 @@ class Molecule(Entity):
         FROM table_1 h JOIN MoleculeStructure s ON h.s = s.id
         '''
         return RequestPack(request, partial(cls.__postprocess_unordered_molecules,
-                                            fingerprint=fingerprint, substr=substr),
+                                            fingerprint=fingerprint, substr=substr, tanimoto_limit=tanimoto_limit),
                            prefetch_map=(MoleculeStructure, 1, [MoleculeStructure.fingerprint, MoleculeStructure._structure]))
 
-    def substructres(self: Union[MoleculeContainer, "Molecule"], ordered=True, request_only=False):
+    def substructures(self: Union[MoleculeContainer, "Molecule"], ordered=True, request_only=False,
+                     tanimoto_limit: Optional[float] = None):
+        """
+        :param ordered: Return substructures ordered by similarity (also similarity limit will be used)
+        :param request_only: Option is for internal usage or debugging to see actual sql request
+        :param tanimoto_limit: takes tanimoto limit from config table of DB, can be override, to go for
+    lower similarities, that we do not recommend. This could lead to erroneous interpretation that request
+    will give ALL other molecules from DB, but in fact it will give only rest of the molecules from the buckets
+    of LSH algorithm. So in order to go for lower similarities reconfigure DB and re-index it
+    with new similarity limit
+        :return: generator like CursorHolder object
+        """
         if isinstance(self, Molecule):
             fingerprint = self.canonic_structure.fingerprint
             mol = self.canonic_structure.structure
@@ -300,10 +333,14 @@ class Molecule(Entity):
             self = Molecule
         else:
             raise ValueError(" Only CGRtools.MoleculeContainer or CGRdb.Molecule")
+        if tanimoto_limit is None:
+            tanimoto_limit = config.lsh_threshold
+        elif not isinstance(tanimoto_limit, float) or 1. < tanimoto_limit < 0.:
+            raise f"tanimoto_limit can be float from 0 to 1, but {tanimoto_limit, type(tanimoto_limit)} was given"
         if ordered:
-            request_pack = self._substructure_ordered(fingerprint, substr=mol)
+            request_pack = self._substructure_ordered(fingerprint, substr=mol, tanimoto_limit=tanimoto_limit)
         else:
-            request_pack = self._substructure_unordered(fingerprint, substr=mol)
+            request_pack = self._substructure_unordered(fingerprint, substr=mol, tanimoto_limit=tanimoto_limit)
         if request_only:
             return request_pack.request
         return CursorHolder(request_pack, self._database_)
@@ -468,9 +505,7 @@ class NonOrganic(Entity):
                 raise ValueError("role can be String (product, reactant) or None")
         if request_only:
             return request_pack.request
-        return CursorHolder(request_pack, cls._database_)
-
-
+        return CursorHolder(request_pack)
 
 
 __all__ = ['Molecule', 'MoleculeStructure', 'NonOrganic']

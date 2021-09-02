@@ -1,13 +1,51 @@
+# -*- coding: utf-8 -*-
+#
+#  Copyright 2021 Timur Gimadiev <timur.gimadiev@gmail.com>
+#  Copyright 2021 Ramil Nugmanov <nougmanoff@protonmail.com>
+#  This file is part of CGRdb.
+#
+#  CGRdb is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU Lesser General Public License as published by
+#  the Free Software Foundation; either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+#  GNU Lesser General Public License for more details.
+#
+#  You should have received a copy of the GNU Lesser General Public License
+#  along with this program; if not, see <https://www.gnu.org/licenses/>.
+#
 from .substance import Substance
 from .reaction import Reaction
 from .config import db
-from CGRtools import SMILESRead
-from pony.orm import commit, db_session
+
+from pony.orm import db_session
 from CGRtools import smiles
-from multiprocessing import Queue, Process
-import zipfile
-from tqdm import tqdm
 from CGRtools.exceptions import InvalidAromaticRing, IncorrectSmiles, ValenceError, MappingError, EmptyMolecule
+from multiprocess import Queue, Process
+from tqdm import tqdm
+import zipfile
+
+
+def init_cgrdb(provider='postgres', user='postgres', host='localhost', password="example", database='test',
+               port=5432, lsh_num_permute=64, lsh_threshold=0.7, cgr_lsh_num_permute=64, cgr_lsh_threshold=0.7,
+               min_radius=1, max_radius=6, length=2048, number_active_bits=2, number_bit_pairs=4):
+    from CGRdb.database.config import Config
+    db.bind(provider=provider, user=user, host=host, password=password, database=database,
+            port=port)
+    db.generate_mapping(create_tables=True)
+    db.execute("Create extension if not exists intarray;")
+    Config(key="fingerprint", value={"min_radius": min_radius, "max_radius": max_radius, "length": length,
+                                     "number_active_bits": number_active_bits, "number_bit_pairs": number_bit_pairs})
+    Config(key="lsh_num_permute", value=lsh_num_permute)
+    Config(key="lsh_threshold", value=lsh_threshold)
+    Config(key="cgr_lsh_num_permute", value=cgr_lsh_num_permute)
+    Config(key="cgr_lsh_threshold", value=cgr_lsh_threshold)
+    db.commit()
+    db.disconnect()
+    db.unbind()
 
 
 def upload_smi(filename, provider='postgres', user='postgres', host='localhost', password="example", database='test',

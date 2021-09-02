@@ -1,9 +1,28 @@
+# -*- coding: utf-8 -*-
+#
+#  Copyright 2021 Timur Gimadiev <timur.gimadiev@gmail.com>
+#  Copyright 2021 Ramil Nugmanov <nougmanoff@protonmail.com>
+#  This file is part of CGRdb.
+#
+#  CGRdb is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU Lesser General Public License as published by
+#  the Free Software Foundation; either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+#  GNU Lesser General Public License for more details.
+#
+#  You should have received a copy of the GNU Lesser General Public License
+#  along with this program; if not, see <https://www.gnu.org/licenses/>.
+#
 from CGRdb.database import db
 from pony.orm import db_session
 from collections import namedtuple, defaultdict
 from .database import Molecule, CGR, Reaction
 from time import time
-from CGRtools import smiles, ReactionContainer, MoleculeContainer
+from CGRtools import smiles, ReactionContainer, MoleculeContainer, CGRContainer
 from typing import Optional
 
 Result = namedtuple("Result", ["smiles", "spent_time", "results_requested", "results_found"])
@@ -22,11 +41,11 @@ mol_queries = {"benzene": "c1ccccc1",
                "phenol": "Oc1ccccc1"}
 
 cgr_queries = {
-1: 'NCCS[.>-]C(c1scnc1)[->.]O',
-2: 'OB(O)[->.]c1(ccccc1)[.>-]c2([->.]Br)cc3C=C(C=O)COc3cc2',
-3: 'CN[.>-]C(C[.>-]C1OCCc2c3c(cccc3)sc12)[->.]Cl',
-4: 'c12C(=O)N(C(c3cccc(ccc1)c23)=O)[.>-]C([.>-]N4CCN(CC4)c5ccccc5)[=>.]O',
-5: 'O=C(C)CCC([.>-]n1ccnc1)[->.]Br'
+                1: 'NCCS[.>-]C(c1scnc1)[->.]O',
+                2: 'OB(O)[->.]c1(ccccc1)[.>-]c2([->.]Br)cc3C=C(C=O)COc3cc2',
+                3: 'CN[.>-]C(C[.>-]C1OCCc2c3c(cccc3)sc12)[->.]Cl',
+                4: 'c12C(=O)N(C(c3cccc(ccc1)c23)=O)[.>-]C([.>-]N4CCN(CC4)c5ccccc5)[=>.]O',
+                5: 'O=C(C)CCC([.>-]n1ccnc1)[->.]Br'
                }
 
 reaction_queries = {
@@ -35,11 +54,12 @@ reaction_queries = {
 3:'[CH2:3]([CH3:4])[Cl:18].[NH2:2][CH3:1].[c:10]12[c:9]([c:17]3[c:12]([cH:13][cH:14][cH:15][cH:16]3)[s:11]1)[CH2:8][CH2:7][O:6][CH2:5]2>>[c:12]12[c:17]([c:9]3[c:10]([CH:5]([CH2:4][CH2:3][NH:2][CH3:1])[O:6][CH2:7][CH2:8]3)[s:11]1)[cH:16][cH:15][cH:14][cH:13]2',
 4: '[O:29]=[CH2:16].[cH:22]1[cH:23][cH:24][cH:25][cH:26][c:21]1[N:20]2[CH2:27][CH2:28][NH:17][CH2:18][CH2:19]2.[cH:4]1[cH:5][cH:6][c:7]2[cH:8][cH:9][cH:10][c:11]3[C:13](=[O:14])[NH:15][C:2](=[O:1])[c:3]1[c:12]23>>[c:3]12[C:2](=[O:1])[N:15]([C:13]([c:11]3[cH:10][cH:9][cH:8][c:7]([cH:6][cH:5][cH:4]1)[c:12]23)=[O:14])[CH2:16][N:17]4[CH2:18][CH2:19][N:20]([CH2:27][CH2:28]4)[c:21]5[cH:26][cH:25][cH:24][cH:23][cH:22]5',
 5: '[CH2:4]([CH2:5][CH2:6][Br:12])[C:2](=[O:3])[CH3:1].[n:7]1[cH:8][cH:9][nH:10][cH:11]1>>[n:7]1([cH:11][n:10][cH:9][cH:8]1)[CH2:6][CH2:5][CH2:4][C:2](=[O:3])[CH3:1]'
-
                     }
+
 
 def spent_time(start):
     return time()-start
+
 
 class Test:
     def __init__(self, provider='postgres', user='postgres', host='localhost', password="example", database='test',
@@ -84,7 +104,7 @@ class Test:
                 print(f"{n} sequence finished for {i}")
         return results
 
-    def query_mol(self, mol, n=1, similarity=True, ordered=True):
+    def query_mol(self, mol: MoleculeContainer, n=1, similarity=True, ordered=True):
         with db_session():
             results_found = 0
             if similarity:
@@ -92,7 +112,7 @@ class Test:
                 res = Molecule.similars(mol, ordered=ordered)
             else:
                 start = time()
-                res = Molecule.substructres(mol, ordered=ordered)
+                res = Molecule.substructures(mol, ordered=ordered)
             for i, r in enumerate(res, 1):
                 r[1].unload()
                 results_found += 1
@@ -101,7 +121,7 @@ class Test:
             t = spent_time(start)
         return Result(smiles=str(mol), spent_time=t, results_requested=n, results_found=results_found)
 
-    def query_cgr(self, mol: MoleculeContainer, n=1, similarity=True, ordered=True):
+    def query_cgr(self, mol: CGRContainer, n=1, similarity=True, ordered=True):
         with db_session():
             results_found = 0
             if similarity:
@@ -109,7 +129,7 @@ class Test:
                 res = CGR.similars(mol, ordered=ordered)
             else:
                 start = time()
-                res = CGR.substructres(mol, ordered=ordered)
+                res = CGR.substructures(mol, ordered=ordered)
             for i, r in enumerate(res, 1):
                 r[0].unload()
                 results_found += 1
@@ -151,7 +171,8 @@ class Test:
                     results["substructure_unordered"].append(self.query_reaction(mol, n=n,
                                                                                  similarity=False, ordered=False))
                 with db_session:
-                    results["similarity_unordered_checkRC"].append(self.query_reaction(mol, n=n, ordered=False, mapping=True))
+                    results["similarity_unordered_checkRC"].append(self.query_reaction(mol, n=n, ordered=False,
+                                                                                       mapping=True))
                 with db_session:
                     results["substructure_unordered_checkRC"].append(self.query_reaction(mol, n=n, similarity=False,
                                                                                  ordered=False, mapping=True))
@@ -171,7 +192,6 @@ class Test:
                 res = Reaction.substructures(reaction, ordered=ordered, fix_roles=fix_roles,
                                              mapping=mapping, request_only=request_only)
             for i, r in enumerate(res, 1):
-                #r[0].unload()
                 results_found += 1
                 if i == n:
                     break

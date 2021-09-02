@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2017-2019 Ramil Nugmanov <nougmanoff@protonmail.com>
+#  Copyright 2021 Timur Gimadiev <timur.gimadiev@gmail.com>
+#  Copyright 2021 Ramil Nugmanov <nougmanoff@protonmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -24,4 +25,4 @@ from .indexes import *
 from .cgr import *
 
 
-__all__ = ['db', 'Reaction', 'Config']
+__all__ = ['db', 'Reaction', 'Config', 'Molecule', 'CGR', 'Substance', 'MoleculeStructure']

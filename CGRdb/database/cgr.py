@@ -1,15 +1,29 @@
+# -*- coding: utf-8 -*-
+#
+#  Copyright 2021 Timur Gimadiev <timur.gimadiev@gmail.com>
+#  Copyright 2021 Ramil Nugmanov <nougmanoff@protonmail.com>
+#  This file is part of CGRdb.
+#
+#  CGRdb is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU Lesser General Public License as published by
+#  the Free Software Foundation; either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+#  GNU Lesser General Public License for more details.
+#
+#  You should have received a copy of the GNU Lesser General Public License
+#  along with this program; if not, see <https://www.gnu.org/licenses/>.
+#
 from functools import cached_property
-from typing import Optional, Union, List, Dict, Tuple
-
+from typing import Optional, Union
 from CGRtools.containers import ReactionContainer, CGRContainer
-from pony.orm import PrimaryKey, Required, Optional as PonyOptional, Set, Json, IntArray,\
-    select, between, raw_sql
+from pony.orm import PrimaryKey, Required, IntArray
 from pickle import loads, dumps
 from .config import Entity
-from . import substance
 from StructureFingerprint import LinearFingerprint
-from ..utils import validate_molecule
-from . import molecule
 from . import config
 from .indexes import CursorHolder, RequestPack
 from functools import partial
@@ -168,7 +182,7 @@ class CGR(Entity):
                            prefetch_map=(
                            CGR, 0, [CGR.fingerprint, CGR._structure]))
 
-    def substructres(self: Union[CGRContainer, "CGR"], ordered=True, request_only=False):
+    def substructures(self: Union[CGRContainer, "CGR"], ordered=True, request_only=False):
         if isinstance(self, CGR):
             fingerprint = self.fingerprint
             mol = self.structure
@@ -187,4 +201,4 @@ class CGR(Entity):
         return CursorHolder(request_pack)
 
 
-
+__all__ = ['CGR']
