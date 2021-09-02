@@ -7,7 +7,7 @@ Use docker-compose.yaml to set up service or do installation by yourself.
 Password, user and port can be changed in docker-compose.yaml
 
 ### Library installation
-Set up your virtual environment, activate it, go into CGRdb directory and do
+Set up your virtual environment, activate it, go into CGRdb directory and do:
 
     pip install -U -e .
 
@@ -16,7 +16,7 @@ Please use jupyter notebooks from examples folder to upload data and test functi
 documentation in progress.
 
 ### Data
-All data required for examples are in dataset folder
+All data required for examples are in dataset folder.
 
 ### Reproducibility of results from paper
 Results can be reproduced with Test class from CGRdb.tests
