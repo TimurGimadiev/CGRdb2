@@ -107,7 +107,14 @@ def cgr_similatiryidx_create(self):
 
 
 class CursorHolder:
-    used_names = set()
+    __slots__ = ('function', 'cursor', 'buffer', 'prefetch_class', 'prefetch_position', 'prefetch_fields')
+
+    def __init__(self, request_pack: RequestPack):
+        self.function = request_pack.postprocess
+        self.prefetch_class, self.prefetch_position, self.prefetch_fields = request_pack.prefetch_map
+        self.cursor = db.get_connection().cursor(str(uuid4()))# withhold=True)
+        self.cursor.execute(request_pack.request)
+        self.buffer = self.loader()
 
     def loader(self):
         if res := self.cursor.fetchone():
