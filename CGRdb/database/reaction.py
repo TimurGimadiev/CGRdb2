@@ -340,57 +340,59 @@ class ReactionSearchCache:
     def __len__(self):
         return self.size
 
-    class ReactionClass(Entity):
-        id = PrimaryKey(int, auto=True)
-        name = Required(str)
-        type = Required(int, default=0)
-        structures = Set('Reaction')
 
-    class ReactionConditions(Entity):
-        id = PrimaryKey(int, auto=True)
-        data = Required(Json, lazy=True)
-        structure = Required("Reaction")
-
-    class ReactionSearchCache:
-
-        def __init__(self, cursor: CursorHolder):
-            self.date = time.asctime()
-            self._tanimotos = []
-            self._reactions = []
-            self._structures = []
-            for r, s, t in cursor:
-                self._reactions.append(r)
-                self._structures.append(s)
-                self._tanimotos.append(t)
-                s.unload()
-            self.size = len(self._reactions)
-
-        def reactions(self, page=1, pagesize=100):
-            if page < 1:
-                raise ValueError('page should be greater or equal than 1')
-            elif pagesize < 1:
-                raise ValueError('pagesize should be greater or equal than 1')
-
-            start = (page - 1) * pagesize
-            end = start + pagesize
-            ris = select(x for x in Reaction if x.id in self._reactions[start:end]).fetch()
-
-            if not ris:
-                return []
-            return ris
-
-        def tanimotos(self, page=1, pagesize=100):
-            if page < 1:
-                raise ValueError('page should be greater or equal than 1')
-            elif pagesize < 1:
-                raise ValueError('pagesize should be greater or equal than 1')
-
-            start = (page - 1) * pagesize
-            end = start + pagesize
-            return self._tanimotos[start:end]
-
-        def __len__(self):
-            return self.size
+class ReactionClass(Entity):
+    id = PrimaryKey(int, auto=True)
+    name = Required(str)
+    type = Required(int, default=0)
+    structures = Set('Reaction')
 
 
-__all__ = ['Reaction', 'ReactionSubstance']
+class ReactionConditions(Entity):
+    id = PrimaryKey(int, auto=True)
+    data = Required(Json, lazy=True)
+    structure = Required("Reaction")
+
+
+class ReactionSearchCache:
+
+    def __init__(self, cursor: CursorHolder):
+        self.date = time.asctime()
+        self._tanimotos = []
+        self._reactions = []
+        self._structures = []
+        for r, s, t in cursor:
+            self._reactions.append(r)
+            self._structures.append(s)
+            self._tanimotos.append(t)
+        self.size = len(self._reactions)
+
+    def reactions(self, page=1, pagesize=100):
+        if page < 1:
+            raise ValueError('page should be greater or equal than 1')
+        elif pagesize < 1:
+            raise ValueError('pagesize should be greater or equal than 1')
+
+        start = (page - 1) * pagesize
+        end = start + pagesize
+        ris = select(x for x in Reaction if x in self._reactions[start:end]).fetch()
+
+        if not ris:
+            return []
+        return ris
+
+    def tanimotos(self, page=1, pagesize=100):
+        if page < 1:
+            raise ValueError('page should be greater or equal than 1')
+        elif pagesize < 1:
+            raise ValueError('pagesize should be greater or equal than 1')
+
+        start = (page - 1) * pagesize
+        end = start + pagesize
+        return self._tanimotos[start:end]
+
+    def __len__(self):
+        return self.size
+
+
+__all__ = ['Reaction', 'ReactionSubstance', "ReactionSearchCache", "ReactionConditions", "ReactionClass"]

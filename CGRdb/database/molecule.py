@@ -525,6 +525,7 @@ class MoleculeClass(Entity):
     _type = Required(int, default=0, column='type')
     structures = Set('Molecule')
 
+
 class MoleculeSearchCache:
 
     def __init__(self, cursor: CursorHolder):
@@ -567,4 +568,5 @@ class MoleculeSearchCache:
     def __len__(self):
         return self.size
 
-__all__ = ['Molecule', 'MoleculeStructure', 'NonOrganic']
+
+__all__ = ['Molecule', 'MoleculeStructure', 'NonOrganic', "MoleculeClass", "MoleculeProperties", "MoleculeSearchCache"]
