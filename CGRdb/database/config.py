@@ -26,7 +26,7 @@ config = {}
 
 
 def load_schema(self=None, provider='postgres', user='postgres', host='localhost', password="example", database='test',
-                port=5444):
+                port=5432):
     if not self:
         self = db
     self.bind(provider=provider, user=user, host=host, password=password, database=database,
