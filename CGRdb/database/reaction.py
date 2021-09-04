@@ -19,12 +19,13 @@
 #
 from functools import cached_property
 from typing import Optional, Union, List, Dict, Tuple
+import time
 
 from CGRtools.containers import ReactionContainer
 from CGRtools.exceptions import MappingError
-from pony.orm import PrimaryKey, Required, Optional as PonyOptional, Set, Json
+from pony.orm import PrimaryKey, Required, Optional as PonyOptional, Set, Json, select, IntArray
 
-from .config import Entity
+from .config import Entity, config
 from . import substance
 from ..utils import validate_molecule
 from . import molecule
@@ -39,8 +40,11 @@ class Reaction(Entity):
     substances = Set('ReactionSubstance')
     CGR = PonyOptional("CGR")
     reaction_center = PonyOptional(str, lazy=True)
+    reaction_index = PonyOptional("ReactionIndex")
+    metadata = Set("ReactionConditions")
+    classes = Set("ReactionClass")
 
-    def __init__(self, reaction: Optional[ReactionContainer] = None, /, keep_cgr=False):
+    def __init__(self, reaction: Optional[ReactionContainer] = None, /, r_index=True):
         if reaction is not None:
             try:
                 reaction_cgr = ~reaction
@@ -256,6 +260,11 @@ class Reaction(Entity):
                                             partial(self.__postprocess_list_reactions_mapped,
                                                     initial_cgr=core), prefetch_map=(None, None, None)))
 
+    @classmethod
+    def find_similar(cls, structure) -> "ReactionSearchCache":
+        cursor = cls.similars(structure)
+        return ReactionSearchCache(cursor)
+
 
 class ReactionSubstance(Entity):
     id = PrimaryKey(int, auto=True)
@@ -289,6 +298,99 @@ class ReactionSubstance(Entity):
     @cached_property
     def mapping(self):
         return dict(self._mapping) if self._mapping else {}
+
+
+class ReactionSearchCache:
+
+    def __init__(self, cursor: CursorHolder):
+        self.date = time.asctime()
+        self._tanimotos = []
+        self._reactions = []
+        self._structures = []
+        for r, s, t in cursor:
+            self._reactions.append(r)
+            self._structures.append(s)
+            self._tanimotos.append(t)
+        self.size = len(self._reactions)
+
+    def reactions(self, page=1, pagesize=100):
+        if page < 1:
+            raise ValueError('page should be greater or equal than 1')
+        elif pagesize < 1:
+            raise ValueError('pagesize should be greater or equal than 1')
+
+        start = (page - 1) * pagesize
+        end = start + pagesize
+        ris = select(x for x in Reaction if x in self._reactions[start:end]).fetch()
+
+        if not ris:
+            return []
+        return ris
+
+    def tanimotos(self, page=1, pagesize=100):
+        if page < 1:
+            raise ValueError('page should be greater or equal than 1')
+        elif pagesize < 1:
+            raise ValueError('pagesize should be greater or equal than 1')
+
+        start = (page - 1) * pagesize
+        end = start + pagesize
+        return self._tanimotos[start:end]
+
+    def __len__(self):
+        return self.size
+
+    class ReactionClass(Entity):
+        id = PrimaryKey(int, auto=True)
+        name = Required(str)
+        type = Required(int, default=0)
+        structures = Set('Reaction')
+
+    class ReactionConditions(Entity):
+        id = PrimaryKey(int, auto=True)
+        data = Required(Json, lazy=True)
+        structure = Required("Reaction")
+
+    class ReactionSearchCache:
+
+        def __init__(self, cursor: CursorHolder):
+            self.date = time.asctime()
+            self._tanimotos = []
+            self._reactions = []
+            self._structures = []
+            for r, s, t in cursor:
+                self._reactions.append(r)
+                self._structures.append(s)
+                self._tanimotos.append(t)
+                s.unload()
+            self.size = len(self._reactions)
+
+        def reactions(self, page=1, pagesize=100):
+            if page < 1:
+                raise ValueError('page should be greater or equal than 1')
+            elif pagesize < 1:
+                raise ValueError('pagesize should be greater or equal than 1')
+
+            start = (page - 1) * pagesize
+            end = start + pagesize
+            ris = select(x for x in Reaction if x.id in self._reactions[start:end]).fetch()
+
+            if not ris:
+                return []
+            return ris
+
+        def tanimotos(self, page=1, pagesize=100):
+            if page < 1:
+                raise ValueError('page should be greater or equal than 1')
+            elif pagesize < 1:
+                raise ValueError('pagesize should be greater or equal than 1')
+
+            start = (page - 1) * pagesize
+            end = start + pagesize
+            return self._tanimotos[start:end]
+
+        def __len__(self):
+            return self.size
 
 
 __all__ = ['Reaction', 'ReactionSubstance']

@@ -52,12 +52,13 @@ def fingerprintidx_create(self):
     self.execute("DROP INDEX if exists idx_moleculestructure;")
     self.execute("CREATE INDEX idx_moleculestructure ON MoleculeStructure USING GIST(fingerprint gist__intbig_ops);")
     self.execute("DROP INDEX if exists idx_cgrfingerprint;")
-    self.execute("CREATE INDEX idx_cgrfingerprint ON cgr USING GIST(fingerprint gist__intbig_ops);")
+    self.execute("CREATE INDEX idx_cgrfingerprint ON reactionindex USING GIST(_fingerprint gist__intbig_ops);")
     print("creation of index for fingerprint length")
     self.execute("DROP INDEX if exists idx_cgr_fingerprint_len;")
-    self.execute("CREATE INDEX idx_cgr_fingerprint_len ON cgr(fingerprint_len);")
+    self.execute("CREATE INDEX idx_cgr_fingerprint_len ON reactionindex(fingerprint_len);")
     self.execute("DROP INDEX if exists idx_fingerprint_len;")
     self.execute("CREATE INDEX idx_fingerprint_len ON moleculestructure(fingerprint_len);")
+
 
 def molecule_similatiryidx_create(self):
     num_permute = config.lsh_num_permute or 64
@@ -94,7 +95,7 @@ def cgr_similatiryidx_create(self):
         self.commit()
         Config(key="cgr_hashranges", value=json.dumps(hashranges))
         print("Creation of LSH for CGR")
-        for idx, fingerprint in tqdm(self.execute(f'SELECT id, fingerprint FROM cgr')):
+        for idx, fingerprint in tqdm(self.execute(f'SELECT id, _fingerprint FROM reactionindex')):
             h = MinHash(num_perm=num_permute, hashfunc=hash)
             h.update_batch(fingerprint)
             lsh.insert(idx, h, check_duplication=False)

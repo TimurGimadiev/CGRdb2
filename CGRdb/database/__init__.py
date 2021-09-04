@@ -17,7 +17,7 @@
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with this program; if not, see <https://www.gnu.org/licenses/>.
 #
-from .config import db, Config
+from .config import db, Config, Entity
 from .molecule import *
 from .reaction import *
 from .substance import *
@@ -25,4 +25,4 @@ from .indexes import *
 from .cgr import *
 
 
-__all__ = ['db', 'Reaction', 'Config', 'Molecule', 'CGR', 'Substance', 'MoleculeStructure']
+__all__ = ['db', 'Reaction', 'Config', 'Molecule', 'CGR', 'Substance', 'MoleculeStructure', 'Entity']

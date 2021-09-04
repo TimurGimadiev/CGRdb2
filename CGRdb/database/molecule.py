@@ -17,6 +17,8 @@
 #  You should have received a copy of the GNU Lesser General Public License
 #  along with this program; if not, see <https://www.gnu.org/licenses/>.
 #
+import time
+from datetime import datetime
 from .config import Entity
 from . import config
 from . import reaction
@@ -27,7 +29,7 @@ from pickle import dumps, loads
 from typing import Union, Optional, List
 from CGRtools.containers import MoleculeContainer
 from StructureFingerprint import LinearFingerprint
-from pony.orm import PrimaryKey, Required, Set, IntArray
+from pony.orm import PrimaryKey, Required, Set, IntArray, Json, select
 from datasketch import MinHash
 from functools import partial
 import json
@@ -37,6 +39,8 @@ class Molecule(Entity):
     id = PrimaryKey(int, auto=True)
     structures = Set('MoleculeStructure')
     substances = Set('SubstanceStructure')
+    metadata = Set("MoleculeProperties")
+    classes = Set("MoleculeClass")
 
     def __init__(self, mol: Optional[MoleculeContainer] = None, /):
         super().__init__()
@@ -507,5 +511,60 @@ class NonOrganic(Entity):
             return request_pack.request
         return CursorHolder(request_pack)
 
+
+class MoleculeProperties(Entity):
+    id = PrimaryKey(int, auto=True)
+    date = Required(datetime, default=datetime.utcnow)
+    structure = Required('Molecule')
+    data = Required(Json)
+
+
+class MoleculeClass(Entity):
+    id = PrimaryKey(int, auto=True)
+    name = Required(str)
+    _type = Required(int, default=0, column='type')
+    structures = Set('Molecule')
+
+class MoleculeSearchCache:
+
+    def __init__(self, cursor: CursorHolder):
+        self.date = time.asctime()
+        self._tanimotos = []
+        self._molecules = []
+        self._structures = []
+        for m, s, t in cursor:
+            self._molecules.append(m)
+            self._structures.append(s)
+            self._tanimotos.append(t)
+            s.unload()
+        self.size = len(self._molecules)
+
+    def molecules(self, page=1, pagesize=100):
+        if page < 1:
+            raise ValueError('page should be greater or equal than 1')
+        elif pagesize < 1:
+            raise ValueError('pagesize should be greater or equal than 1')
+
+        start = (page - 1) * pagesize
+        end = start + pagesize
+        mis = select(x for x in Molecule if x in self._molecules[start:end]).fetch()
+
+        if not mis:
+            return []
+
+        return mis
+
+    def tanimotos(self, page=1, pagesize=100):
+        if page < 1:
+            raise ValueError('page should be greater or equal than 1')
+        elif pagesize < 1:
+            raise ValueError('pagesize should be greater or equal than 1')
+
+        start = (page - 1) * pagesize
+        end = start + pagesize
+        return self._tanimotos[start:end]
+
+    def __len__(self):
+        return self.size
 
 __all__ = ['Molecule', 'MoleculeStructure', 'NonOrganic']
