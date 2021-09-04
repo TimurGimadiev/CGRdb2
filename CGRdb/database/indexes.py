@@ -147,43 +147,17 @@ class CursorHolder:
                     raise StopIteration("Similarity limit reached")
                 return result
 
-    def __del__(self):
-        try:
-            self.cursor.close()
-        except Exception:
-            pass
+    #def __del__(self):
+    #    if not self.cursor.closed:
+    #        self.cursor.close()
 
-# class ReactionSimilairityIndex(Entity):
-#     band = Required(int)
-#     key = Required(int, size=64)
-#     records = Required(IntArray)
-#     PrimaryKey(band, key)
-#
-#
-# def reaction_similatiryidx_create(db):
-#     num_permute = config.lsh_num_permute or 64
-#     threshold = config.lsh_threshold or 0.7
-#     db.execute(f"""DELETE FROM ReactionSimilairityIndex WHERE 1=1""")
-#     db.commit()
-#     lsh = MinHashLSH(threshold=threshold, num_perm=num_permute, hashfunc=hash)
-#     b, r = _optimal_param(threshold, num_permute, 0.5, 0.5)
-#     hashranges = [(i * r, (i + 1) * r) for i in range(b)]
-#     Config(key="hashranges", value=json.dumps(hashranges))
-#     with db_session:
-#         db.execute(f"""DELETE FROM MoleculeSimilarityIndex WHERE 1=1""")
-#         db.commit()
-#         for idx, fingerprint in tqdm(db.execute(f'SELECT id, fingerprint FROM reaction')):
-#             h = MinHash(num_perm=num_permute, hashfunc=hash)
-#             h.update_batch(fingerprint)
-#             lsh.insert(idx, h, check_duplication=False)
-#         for n, ht in enumerate(lsh.hashtables, 1):
-#             for key, value in ht._dict.items():
-#                 db.insert(MoleculeSimilarityIndex, band=n, key=key, records=list(value))
-#             db.commit()
-
+def unbind(self):
+    self.provider = self.schema = None
 
 db.create_sim_index = MethodType(molecule_similatiryidx_create, db)
 db.create_fing_index = MethodType(fingerprintidx_create, db)
+db.unbind = MethodType(unbind, db)
+db.create_cgr_sim_index = MethodType(cgr_similatiryidx_create, db)
 
 
 __all__ = ['MoleculeSimilarityIndex', 'molecule_similatiryidx_create', 'RequestPack', 'CursorHolder']
