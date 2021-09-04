@@ -6,6 +6,8 @@ Chemical cartridge for reactions and molecules.
 Use docker-compose.yaml to set up service or do installation by yourself.
 Password, user and port can be changed in docker-compose.yaml
 
+    docker-compose up -d
+
 ### Library installation
 Set up your virtual environment, activate it, go into CGRdb directory and do:
 
