@@ -54,7 +54,7 @@ class Reaction(Entity):
                 ReactionSubstance(substance.Substance(((x, None),)), self, False)
             for x in reaction.products:
                 ReactionSubstance(substance.Substance(((x, None),)), self, True)
-            if cgr:
+            if keep_cgr:
                 CGR(reaction, reaction=self)
 
     @cached_property
