@@ -18,10 +18,21 @@
 #  along with this program; if not, see <https://www.gnu.org/licenses/>.
 #
 from pony.orm import PrimaryKey, Required, Json, Database, db_session
+from types import MethodType
 
 db = Database()
 Entity = db.Entity
 config = {}
+
+
+def load_schema(self=None, provider='postgres', user='postgres', host='localhost', password="example", database='test',
+                port=5444):
+    if not self:
+        self = db
+    self.bind(provider=provider, user=user, host=host, password=password, database=database,
+              port=port)
+    self.generate_mapping(create_tables=True)
+    return self
 
 
 class Config(Entity):
@@ -41,4 +52,6 @@ def __getattr__(key):
         return value
 
 
-__all__ = ['Config', 'Entity', 'db']
+db.load_schema = MethodType(load_schema, db)
+
+__all__ = ['Config', 'Entity', 'db', 'load_schema']
