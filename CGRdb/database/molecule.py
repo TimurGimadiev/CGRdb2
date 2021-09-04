@@ -171,7 +171,11 @@ class Molecule(Entity):
             return type(cls).get(cls, **kwargs)
         elif not isinstance(mol, MoleculeContainer):
             raise ValueError("CGRtools.MoleculeContainer should be provided")
-        return MoleculeStructure.get(signature=bytes(mol)).molecule
+        try:
+            m = MoleculeStructure.get(signature=mol.pack()).molecule
+        except AttributeError:
+            m = None
+        return m
 
     @classmethod
     def _exact_match_in_reactions(cls, mol):
@@ -406,6 +410,7 @@ class Molecule(Entity):
     @classmethod
     def structure_exists(cls, structure) -> bool:
         if cls.get(structure):
+            print(cls.get(structure))
             return True
         return False
 
