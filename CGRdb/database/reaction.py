@@ -32,7 +32,7 @@ from . import molecule
 from .indexes import CursorHolder, RequestPack
 from functools import partial
 from StructureFingerprint import LinearFingerprint
-from .cgr import CGR
+from . import reaction_index
 
 
 class Reaction(Entity):
@@ -58,11 +58,12 @@ class Reaction(Entity):
                 ReactionSubstance(substance.Substance(((x, None),)), self, False)
             for x in reaction.products:
                 ReactionSubstance(substance.Substance(((x, None),)), self, True)
-            if cgr:
-                CGR(reaction, reaction=self)
+            if r_index:
+                reaction_index.ReactionIndex(reaction, reaction=self)
+
 
     @cached_property
-    def structure(self):
+    def structure(self) -> ReactionContainer:
         reactants = []
         products = []
         for i in self.substances:
@@ -70,8 +71,7 @@ class Reaction(Entity):
                 products.append(i.structure)
             else:
                 reactants.append(i.structure)
-        reaction = ReactionContainer(reactants=reactants, products=products)
-        return reaction
+        return ReactionContainer(reactants=reactants, products=products)
 
     @cached_property
     def fingerprint(self):

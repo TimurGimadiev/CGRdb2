@@ -109,17 +109,26 @@ def cgr_similatiryidx_create(self):
 class CursorHolder:
     used_names = set()
 
-    def __init__(self, request, db, function):
-        self.function = function
-        self.connection = db.get_connection()
-        self.request = request
-        self.name = f"{hash(self.request)}"
-        self.cursor = self.connection.cursor(self.name, withhold=True)
-        if self.name in self.used_names:
-            self.flush()
-            self.cursor = self.connection.cursor(self.name, withhold=True)
-        self.used_names.add(self.name)
-        self.cursor.execute(request)
+    def loader(self):
+        if res := self.cursor.fetchone():
+            if self.prefetch_fields:
+                i = res[self.prefetch_position]
+                select(x for x in self.prefetch_class if x.id == i).prefetch(*self.prefetch_fields)[:]
+            yield res
+        else:
+            return
+
+        c = 10
+        while True:
+            if res := self.cursor.fetchmany(c):
+                if self.prefetch_fields:
+                    ids_to_prefetch = [x[self.prefetch_position] for x in res]
+                    select(x for x in self.prefetch_class if x.id in ids_to_prefetch).prefetch(*self.prefetch_fields)[:]
+                yield from res
+                if c < 1000:
+                    c *= 10
+            else:
+                return
 
     def __iter__(self):
         return self
@@ -170,4 +179,4 @@ db.create_sim_index = MethodType(molecule_similatiryidx_create, db)
 db.create_fing_index = MethodType(fingerprintidx_create, db)
 
 
-__all__ = ['MoleculeSimilarityIndex', 'molecule_similatiryidx_create']
+__all__ = ['MoleculeSimilarityIndex', 'molecule_similatiryidx_create', 'RequestPack', 'CursorHolder']
