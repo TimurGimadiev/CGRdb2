@@ -25,4 +25,5 @@ from .indexes import *
 from .cgr import *
 
 
-__all__ = ['db', 'Reaction', 'Config', 'Molecule', 'CGR', 'Substance', 'MoleculeStructure', 'Entity', 'load_schema']
+__all__ = ['db', 'Reaction', 'Config', 'Molecule', 'CGR', 'Substance', 'MoleculeStructure', 'Entity', 'load_schema',
+           'ReactionClass', 'ReactionConditions', 'MoleculeClass', 'MoleculeProperties']
