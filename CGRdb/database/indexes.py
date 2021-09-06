@@ -59,6 +59,7 @@ def fingerprintidx_create(self):
     self.execute("DROP INDEX if exists idx_fingerprint_len;")
     self.execute("CREATE INDEX idx_fingerprint_len ON moleculestructure(fingerprint_len);")
 
+
 def molecule_similatiryidx_create(self):
     num_permute = config.lsh_num_permute or 64
     threshold = config.lsh_threshold or 0.7
@@ -106,19 +107,35 @@ def cgr_similatiryidx_create(self):
 
 
 class CursorHolder:
-    used_names = set()
+    __slots__ = ('function', 'cursor', 'buffer', 'prefetch_class', 'prefetch_position', 'prefetch_fields')
 
-    def __init__(self, request, db, function):
-        self.function = function
-        self.connection = db.get_connection()
-        self.request = request
-        self.name = f"{hash(self.request)}"
-        self.cursor = self.connection.cursor(self.name, withhold=True)
-        if self.name in self.used_names:
-            self.flush()
-            self.cursor = self.connection.cursor(self.name, withhold=True)
-        self.used_names.add(self.name)
-        self.cursor.execute(request)
+    def __init__(self, request_pack: RequestPack):
+        self.function = request_pack.postprocess
+        self.prefetch_class, self.prefetch_position, self.prefetch_fields = request_pack.prefetch_map
+        self.cursor = db.get_connection().cursor(str(uuid4()))# withhold=True)
+        self.cursor.execute(request_pack.request)
+        self.buffer = self.loader()
+
+    def loader(self):
+        if res := self.cursor.fetchone():
+            if self.prefetch_fields:
+                i = res[self.prefetch_position]
+                select(x for x in self.prefetch_class if x.id == i).prefetch(*self.prefetch_fields)[:]
+            yield res
+        else:
+            return
+
+        c = 10
+        while True:
+            if res := self.cursor.fetchmany(c):
+                if self.prefetch_fields:
+                    ids_to_prefetch = [x[self.prefetch_position] for x in res]
+                    select(x for x in self.prefetch_class if x.id in ids_to_prefetch).prefetch(*self.prefetch_fields)[:]
+                yield from res
+                if c < 1000:
+                    c *= 10
+            else:
+                return
 
     def __iter__(self):
         return self
@@ -130,43 +147,17 @@ class CursorHolder:
                     raise StopIteration("Similarity limit reached")
                 return result
 
-    def __del__(self):
-        try:
-            self.cursor.close()
-        except Exception:
-            pass
+    #def __del__(self):
+    #    if not self.cursor.closed:
+    #        self.cursor.close()
 
-# class ReactionSimilairityIndex(Entity):
-#     band = Required(int)
-#     key = Required(int, size=64)
-#     records = Required(IntArray)
-#     PrimaryKey(band, key)
-#
-#
-# def reaction_similatiryidx_create(db):
-#     num_permute = config.lsh_num_permute or 64
-#     threshold = config.lsh_threshold or 0.7
-#     db.execute(f"""DELETE FROM ReactionSimilairityIndex WHERE 1=1""")
-#     db.commit()
-#     lsh = MinHashLSH(threshold=threshold, num_perm=num_permute, hashfunc=hash)
-#     b, r = _optimal_param(threshold, num_permute, 0.5, 0.5)
-#     hashranges = [(i * r, (i + 1) * r) for i in range(b)]
-#     Config(key="hashranges", value=json.dumps(hashranges))
-#     with db_session:
-#         db.execute(f"""DELETE FROM MoleculeSimilarityIndex WHERE 1=1""")
-#         db.commit()
-#         for idx, fingerprint in tqdm(db.execute(f'SELECT id, fingerprint FROM reaction')):
-#             h = MinHash(num_perm=num_permute, hashfunc=hash)
-#             h.update_batch(fingerprint)
-#             lsh.insert(idx, h, check_duplication=False)
-#         for n, ht in enumerate(lsh.hashtables, 1):
-#             for key, value in ht._dict.items():
-#                 db.insert(MoleculeSimilarityIndex, band=n, key=key, records=list(value))
-#             db.commit()
-
+def unbind(self):
+    self.provider = self.schema = None
 
 db.create_sim_index = MethodType(molecule_similatiryidx_create, db)
 db.create_fing_index = MethodType(fingerprintidx_create, db)
+db.unbind = MethodType(unbind, db)
+db.create_cgr_sim_index = MethodType(cgr_similatiryidx_create, db)
 
 
-__all__ = ['MoleculeSimilarityIndex', 'molecule_similatiryidx_create']
+__all__ = ['MoleculeSimilarityIndex', 'molecule_similatiryidx_create', 'RequestPack', 'CursorHolder']
