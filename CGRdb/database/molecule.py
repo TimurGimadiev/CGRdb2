@@ -356,10 +356,10 @@ class Molecule(Entity):
     def substructures_in_reactions(self: Union[MoleculeContainer, "Molecule"], ordered=True,
                                    is_product: Optional[bool] = None, request_only=False):
         if isinstance(self, MoleculeContainer):
-            request = Molecule.substructres(self, ordered=ordered, request_only=True)
+            request = Molecule.substructures(self, ordered=ordered, request_only=True)
             self = Molecule
         elif isinstance(self, Molecule):
-            request = self.substructres(ordered=ordered, request_only=True)
+            request = self.substructures(ordered=ordered, request_only=True)
         else:
             raise TypeError("Only CGRtools.MoleculeContainer or CGRdb.Molecule can be used")
 
