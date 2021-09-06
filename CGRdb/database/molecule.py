@@ -59,19 +59,25 @@ class Molecule(Entity):
                                     enumerate(hashranges, 1))
         return request_end
 
-    @classmethod
-    def __postprocess_unordered_molecules(cls, result, *, fingerprint=None, no_graph=False):
+    @staticmethod
+    def __postprocess_unordered_molecules(result, *, fingerprint=None, substr=None, tanimoto_limit=None):
         struct = MoleculeStructure[result[1]]
-        tanimoto = len(set(fingerprint).intersection(struct.fingerprint)) / \
-                   len(set(fingerprint).union(struct.fingerprint))
+        fps = set(struct.fingerprint)
+        tanimoto = len(fps.intersection(fingerprint)) / len(fps.union(fingerprint))
+        del struct._vals_[MoleculeStructure.fingerprint]
+
         mol = Molecule[result[0]]
-        if no_graph:
-            for i in mol.structures:
-                i._vals_.pop(MoleculeStructure.fingerprint)
-                i._vals_.pop(MoleculeStructure._structure)
-                i._vals_.pop(MoleculeStructure.signature)
-                i._vals_.pop(MoleculeStructure._fast_mapping)
-        return mol, struct, tanimoto
+        if substr is None:
+            if tanimoto > tanimoto_limit:
+                return (mol, struct, tanimoto)
+            else:
+                return "stop"
+        else:
+            if substr <= struct.structure:
+                return mol, struct, tanimoto
+            # clean cache for memory keeping
+            del struct._vals_[MoleculeStructure._structure]
+            del struct.__dict__['structure']
 
     @staticmethod
     def __postprocess_ordered_molecules(result, substr=None, tanimoto_limit=None):
@@ -157,13 +163,15 @@ class Molecule(Entity):
 
     @classmethod
     def get(cls, mol: Optional[MoleculeContainer] = None, **kwargs):  # fix this
-        if mol is not None:
-            if not isinstance(mol, MoleculeContainer):
-                raise ValueError("CGRtools.MoleculeContainer should be provided")
-            return CursorHolder(cls._exact_match(mol), cls._database_)
-        else:
-            return super().get(**kwargs)
-
+        if mol is None:
+            return type(cls).get(cls, **kwargs)
+        elif not isinstance(mol, MoleculeContainer):
+            raise ValueError("CGRtools.MoleculeContainer should be provided")
+        try:
+            m = MoleculeStructure.get(signature=mol.pack()).molecule
+        except AttributeError:
+            m = None
+        return m
 
     @classmethod
     def _exact_match_in_reactions(cls, mol):
@@ -187,7 +195,7 @@ class Molecule(Entity):
                 raise ValueError("is_product can be boolean (True for product, False for reactant) or None")
         if request_only:
             return request_pack.request
-        return CursorHolder(request_pack, cls._database_)
+        return CursorHolder(request_pack)
 
     def in_reactions(self, is_product: Optional[bool] = None):  # fix this combine with reactions classmethod
         request_pack = RequestPack(request=f'''WITH substances as (SELECT s.substance
@@ -200,7 +208,7 @@ class Molecule(Entity):
                 request_pack = self.__role_filter(request_pack, is_product)
             else:
                 raise ValueError("is_product can be boolean (True for product, False for reactant) or None")
-        return CursorHolder(request_pack, self._database_)
+        return CursorHolder(request_pack)
 
 # similarity search block
 
@@ -249,7 +257,7 @@ class Molecule(Entity):
             request_pack = self._similarity_unorderd(fingerprint, tanimoto_limit=tanimoto_limit)
         if request_only:
             return request_pack.request
-        return CursorHolder(request_pack, self._database_)
+        return CursorHolder(request_pack)
 
     def similars_in_reactions(self: Union[MoleculeContainer, "Molecule"], ordered=True,
                               is_product: Optional[bool] = None, request_only=False):
@@ -271,7 +279,7 @@ class Molecule(Entity):
                 raise ValueError("is_product can be boolean (True for product, False for reactant) or None")
         if request_only:
             return request_pack.request
-        return CursorHolder(request_pack, self._database_)
+        return CursorHolder(request_pack)
 
 
 # substructure search block
@@ -343,7 +351,7 @@ class Molecule(Entity):
             request_pack = self._substructure_unordered(fingerprint, substr=mol, tanimoto_limit=tanimoto_limit)
         if request_only:
             return request_pack.request
-        return CursorHolder(request_pack, self._database_)
+        return CursorHolder(request_pack)
 
     def substructures_in_reactions(self: Union[MoleculeContainer, "Molecule"], ordered=True,
                                    is_product: Optional[bool] = None, request_only=False):
@@ -366,15 +374,15 @@ class Molecule(Entity):
                 raise ValueError("is_product can be boolean (True for product, False for reactant) or None")
         if request_only:
             return request_pack.request
-        return CursorHolder(request_pack, self._database_)
+        return CursorHolder(request_pack)
 
 
 class MoleculeStructure(Entity):
     id = PrimaryKey(int, auto=True)
     molecule = Required('Molecule')
-    signature = Required(bytes, unique=True)
-    smiles = Required(str)
-    fingerprint = Required(IntArray)
+    signature = Required(bytes, unique=True, lazy=True)
+    smiles = Required(str, lazy=True)
+    fingerprint = Required(IntArray, lazy=True)
     fingerprint_len = Required(int)
     is_canonic = Required(bool)
     _structure = Required(bytes)
