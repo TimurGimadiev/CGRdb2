@@ -385,8 +385,8 @@ class MoleculeStructure(Entity):
     fingerprint = Required(IntArray, lazy=True)
     fingerprint_len = Required(int)
     is_canonic = Required(bool)
-    _structure = Required(bytes)
-    _fast_mapping = Required(IntArray)
+    _structure = Required(bytes, lazy=True)
+    _fast_mapping = Required(IntArray, lazy=True)
 
     def __init__(self, mol: Union[bytes, MoleculeContainer], molecule: Molecule, /, is_canonic: bool = True, *,
                  fingerprint: Optional[List[int]] = None, signature: Optional[bytes] = None,
