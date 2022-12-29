@@ -168,7 +168,7 @@ class Molecule(Entity):
         elif not isinstance(mol, MoleculeContainer):
             raise ValueError("CGRtools.MoleculeContainer should be provided")
         try:
-            m = MoleculeStructure.get(signature=mol.pack()).molecule
+            m = MoleculeStructure.get(signature=bytes(mol)).molecule
         except AttributeError:
             m = None
         return m
